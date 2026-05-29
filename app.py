@@ -7,6 +7,8 @@ import uuid
 import datetime
 from urllib.parse import urlparse
 
+import db as job_db
+
 app = Flask(__name__)
 
 # Base URL for GitHub API
@@ -14,9 +16,8 @@ GITHUB_API_BASE = "https://api.github.com"
 # GitHub repositories raw content URL
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
 
-# In-memory job storage for text-to-voice
-# Each job: {id, text, language, status, created_at, updated_at, audio_path, error}
-jobs = {}
+# Initialize the database on startup
+job_db.init_db()
 
 
 def extract_repo_info(github_url):
@@ -123,17 +124,7 @@ def tts_submit():
         return jsonify({"error": "Text is too long. Maximum 5000 characters allowed."}), 400
     
     job_id = str(uuid.uuid4())
-    job = {
-        "id": job_id,
-        "text": text,
-        "language": language,
-        "status": "pending",
-        "created_at": datetime.datetime.now().isoformat(),
-        "updated_at": datetime.datetime.now().isoformat(),
-        "audio_path": None,
-        "error": None,
-    }
-    jobs[job_id] = job
+    job_db.add_job(job_id, text, language)
     
     return jsonify({"job_id": job_id, "status": "pending"}), 201
 
@@ -151,17 +142,7 @@ def tts_submit_form():
         return render_template("text_to_voice.html", error="Text is too long. Maximum 5000 characters allowed.")
     
     job_id = str(uuid.uuid4())
-    job = {
-        "id": job_id,
-        "text": text,
-        "language": language,
-        "status": "pending",
-        "created_at": datetime.datetime.now().isoformat(),
-        "updated_at": datetime.datetime.now().isoformat(),
-        "audio_path": None,
-        "error": None,
-    }
-    jobs[job_id] = job
+    job_db.add_job(job_id, text, language)
     
     return redirect(url_for("text_to_voice"))
 
@@ -169,7 +150,7 @@ def tts_submit_form():
 @app.route("/tts/download/<job_id>", methods=["GET"])
 def tts_download(job_id):
     """Download audio file for a completed job."""
-    job = jobs.get(job_id)
+    job = job_db.get_job(job_id)
     if not job:
         return render_template("text_to_voice.html", error="Job not found")
     
@@ -201,11 +182,11 @@ def tts_list_jobs():
     """
     status_filter = request.args.get("status")
     
-    job_list = []
-    for job in jobs.values():
-        if status_filter and job["status"] != status_filter:
-            continue
-        job_list.append({
+    job_list = job_db.list_jobs(status_filter)
+    
+    result = []
+    for job in job_list:
+        result.append({
             "id": job["id"],
             "text": job["text"][:100] + "..." if len(job["text"]) > 100 else job["text"],
             "language": job["language"],
@@ -214,9 +195,7 @@ def tts_list_jobs():
             "updated_at": job["updated_at"],
         })
     
-    # Sort by created_at descending (newest first)
-    job_list.sort(key=lambda x: x["created_at"], reverse=True)
-    return jsonify({"jobs": job_list})
+    return jsonify({"jobs": result})
 
 
 @app.route("/api/tts/job/<job_id>", methods=["GET"])
@@ -226,19 +205,11 @@ def tts_get_job(job_id):
     VibeVoice can use this to get full job details including the full text.
     Returns: {"id", "text", "language", "status", "created_at", "updated_at", "error"}
     """
-    job = jobs.get(job_id)
+    job = job_db.get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     
-    return jsonify({
-        "id": job["id"],
-        "text": job["text"],
-        "language": job["language"],
-        "status": job["status"],
-        "created_at": job["created_at"],
-        "updated_at": job["updated_at"],
-        "error": job["error"],
-    })
+    return jsonify(job)
 
 
 @app.route("/api/tts/job/<job_id>/result", methods=["POST"])
@@ -250,16 +221,14 @@ def tts_upload_result(job_id):
     Optional: 'error' field if processing failed.
     Returns: {"status": "completed" or "failed", "job_id": "..."}
     """
-    job = jobs.get(job_id)
+    job = job_db.get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     
     # Check if processing failed
     error_msg = request.form.get("error")
     if error_msg:
-        job["status"] = "failed"
-        job["error"] = error_msg
-        job["updated_at"] = datetime.datetime.now().isoformat()
+        job_db.update_job_status(job_id, "failed", error=error_msg)
         return jsonify({"status": "failed", "job_id": job_id})
     
     # Check if audio file is uploaded
@@ -282,9 +251,7 @@ def tts_upload_result(job_id):
     audio_file.save(audio_path)
     
     # Update job status
-    job["status"] = "completed"
-    job["audio_path"] = audio_path
-    job["updated_at"] = datetime.datetime.now().isoformat()
+    job_db.update_job_audio_path(job_id, audio_path)
     
     return jsonify({"status": "completed", "job_id": job_id})
 
@@ -297,7 +264,7 @@ def tts_update_status(job_id):
     Expects JSON: {"status": "processing" | "failed", "error": "..."}
     Returns: {"status": "...", "job_id": "..."}
     """
-    job = jobs.get(job_id)
+    job = job_db.get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     
@@ -307,13 +274,29 @@ def tts_update_status(job_id):
     if new_status not in ("pending", "processing", "completed", "failed"):
         return jsonify({"error": "Invalid status. Must be: pending, processing, completed, failed"}), 400
     
-    job["status"] = new_status
-    job["updated_at"] = datetime.datetime.now().isoformat()
-    
-    if data.get("error"):
-        job["error"] = data["error"]
+    error_msg = data.get("error")
+    job_db.update_job_status(job_id, new_status, error=error_msg)
     
     return jsonify({"status": job["status"], "job_id": job_id})
+
+
+@app.route("/api/tts/job/<job_id>", methods=["DELETE"])
+def tts_delete_job(job_id):
+    """Delete a job and its associated audio file.
+    
+    Returns: {"success": true, "job_id": "..."}
+    """
+    job = job_db.get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    
+    # Don't allow deleting jobs that are being processed
+    if job["status"] == "processing":
+        return jsonify({"error": "Cannot delete a job that is currently being processed"}), 400
+    
+    job_db.delete_job(job_id)
+    
+    return jsonify({"success": True, "job_id": job_id})
 
 
 # ============================================================
