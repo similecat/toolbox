@@ -1,9 +1,10 @@
-from flask import Flask, render_template, request, send_file, redirect, url_for
+from flask import Flask, render_template, request, send_file, redirect, url_for, jsonify
 import os
 import tempfile
 import zipfile
 import requests
-import gtts
+import uuid
+import datetime
 from urllib.parse import urlparse
 
 app = Flask(__name__)
@@ -12,6 +13,10 @@ app = Flask(__name__)
 GITHUB_API_BASE = "https://api.github.com"
 # GitHub repositories raw content URL
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
+
+# In-memory job storage for text-to-voice
+# Each job: {id, text, language, status, created_at, updated_at, audio_path, error}
+jobs = {}
 
 
 def extract_repo_info(github_url):
@@ -83,16 +88,237 @@ def download_github_repo(github_url, token=None):
     return zip_path
 
 
-def text_to_speech(text, language="en"):
-    """Convert text to speech and return audio file path."""
-    temp_dir = tempfile.mkdtemp()
-    audio_path = os.path.join(temp_dir, "speech.mp3")
-    
-    tts = gtts.gTTS(text, lang=language)
-    tts.save(audio_path)
-    
-    return audio_path
+# ============================================================
+# Text-to-Voice: Web Routes (Submit, List, Download)
+# ============================================================
 
+@app.route("/text-to-voice")
+def text_to_voice():
+    """Text-to-voice tool page."""
+    return render_template("text_to_voice.html")
+
+
+@app.route("/api/tts/submit", methods=["POST"])
+def tts_submit():
+    """Submit a new text-to-voice job.
+    
+    Accepts JSON or form data.
+    Returns: {"job_id": "...", "status": "pending"}
+    """
+    text = ""
+    language = "en"
+    
+    if request.is_json:
+        data = request.get_json()
+        text = data.get("text", "").strip()
+        language = data.get("language", "en").strip()
+    else:
+        text = request.form.get("text", "").strip()
+        language = request.form.get("language", "en").strip()
+    
+    if not text:
+        return jsonify({"error": "Please provide some text"}), 400
+    
+    if len(text) > 5000:
+        return jsonify({"error": "Text is too long. Maximum 5000 characters allowed."}), 400
+    
+    job_id = str(uuid.uuid4())
+    job = {
+        "id": job_id,
+        "text": text,
+        "language": language,
+        "status": "pending",
+        "created_at": datetime.datetime.now().isoformat(),
+        "updated_at": datetime.datetime.now().isoformat(),
+        "audio_path": None,
+        "error": None,
+    }
+    jobs[job_id] = job
+    
+    return jsonify({"job_id": job_id, "status": "pending"}), 201
+
+
+@app.route("/tts/submit", methods=["POST"])
+def tts_submit_form():
+    """Handle form-based job submission (redirect back to page)."""
+    text = request.form.get("text", "").strip()
+    language = request.form.get("language", "en").strip()
+    
+    if not text:
+        return render_template("text_to_voice.html", error="Please provide some text")
+    
+    if len(text) > 5000:
+        return render_template("text_to_voice.html", error="Text is too long. Maximum 5000 characters allowed.")
+    
+    job_id = str(uuid.uuid4())
+    job = {
+        "id": job_id,
+        "text": text,
+        "language": language,
+        "status": "pending",
+        "created_at": datetime.datetime.now().isoformat(),
+        "updated_at": datetime.datetime.now().isoformat(),
+        "audio_path": None,
+        "error": None,
+    }
+    jobs[job_id] = job
+    
+    return redirect(url_for("text_to_voice"))
+
+
+@app.route("/tts/download/<job_id>", methods=["GET"])
+def tts_download(job_id):
+    """Download audio file for a completed job."""
+    job = jobs.get(job_id)
+    if not job:
+        return render_template("text_to_voice.html", error="Job not found")
+    
+    if job["status"] != "completed":
+        return render_template("text_to_voice.html", error="Job is not completed yet")
+    
+    if not job["audio_path"] or not os.path.exists(job["audio_path"]):
+        return render_template("text_to_voice.html", error="Audio file not found")
+    
+    return send_file(
+        job["audio_path"],
+        as_attachment=True,
+        download_name=f"voice_{job_id}.mp3",
+        mimetype="audio/mpeg"
+    )
+
+
+# ============================================================
+# Text-to-Voice: VibeVoice APIs
+# ============================================================
+
+@app.route("/api/tts/jobs", methods=["GET"])
+def tts_list_jobs():
+    """List all text-to-voice jobs.
+    
+    VibeVoice can use this to discover pending jobs.
+    Optional query param: ?status=pending to filter.
+    Returns: {"jobs": [...]}
+    """
+    status_filter = request.args.get("status")
+    
+    job_list = []
+    for job in jobs.values():
+        if status_filter and job["status"] != status_filter:
+            continue
+        job_list.append({
+            "id": job["id"],
+            "text": job["text"][:100] + "..." if len(job["text"]) > 100 else job["text"],
+            "language": job["language"],
+            "status": job["status"],
+            "created_at": job["created_at"],
+            "updated_at": job["updated_at"],
+        })
+    
+    # Sort by created_at descending (newest first)
+    job_list.sort(key=lambda x: x["created_at"], reverse=True)
+    return jsonify({"jobs": job_list})
+
+
+@app.route("/api/tts/job/<job_id>", methods=["GET"])
+def tts_get_job(job_id):
+    """Get a specific text-to-voice job.
+    
+    VibeVoice can use this to get full job details including the full text.
+    Returns: {"id", "text", "language", "status", "created_at", "updated_at", "error"}
+    """
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    
+    return jsonify({
+        "id": job["id"],
+        "text": job["text"],
+        "language": job["language"],
+        "status": job["status"],
+        "created_at": job["created_at"],
+        "updated_at": job["updated_at"],
+        "error": job["error"],
+    })
+
+
+@app.route("/api/tts/job/<job_id>/result", methods=["POST"])
+def tts_upload_result(job_id):
+    """Upload audio result for a job.
+    
+    VibeVoice calls this after generating the audio.
+    Expects multipart form data with 'audio' file field.
+    Optional: 'error' field if processing failed.
+    Returns: {"status": "completed" or "failed", "job_id": "..."}
+    """
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    
+    # Check if processing failed
+    error_msg = request.form.get("error")
+    if error_msg:
+        job["status"] = "failed"
+        job["error"] = error_msg
+        job["updated_at"] = datetime.datetime.now().isoformat()
+        return jsonify({"status": "failed", "job_id": job_id})
+    
+    # Check if audio file is uploaded
+    if "audio" not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
+    
+    audio_file = request.files["audio"]
+    if audio_file.filename == "":
+        return jsonify({"error": "No audio file selected"}), 400
+    
+    # Save the audio file
+    audio_dir = os.path.join(app.instance_path, "audio")
+    os.makedirs(audio_dir, exist_ok=True)
+    
+    # Preserve original extension
+    ext = os.path.splitext(audio_file.filename)[1] or ".mp3"
+    filename = f"{job_id}{ext}"
+    audio_path = os.path.join(audio_dir, filename)
+    
+    audio_file.save(audio_path)
+    
+    # Update job status
+    job["status"] = "completed"
+    job["audio_path"] = audio_path
+    job["updated_at"] = datetime.datetime.now().isoformat()
+    
+    return jsonify({"status": "completed", "job_id": job_id})
+
+
+@app.route("/api/tts/job/<job_id>/status", methods=["POST"])
+def tts_update_status(job_id):
+    """Update job status (processing, failed, etc.).
+    
+    VibeVoice can use this to update job status without uploading audio.
+    Expects JSON: {"status": "processing" | "failed", "error": "..."}
+    Returns: {"status": "...", "job_id": "..."}
+    """
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    
+    data = request.get_json()
+    new_status = data.get("status")
+    
+    if new_status not in ("pending", "processing", "completed", "failed"):
+        return jsonify({"error": "Invalid status. Must be: pending, processing, completed, failed"}), 400
+    
+    job["status"] = new_status
+    job["updated_at"] = datetime.datetime.now().isoformat()
+    
+    if data.get("error"):
+        job["error"] = data["error"]
+    
+    return jsonify({"status": job["status"], "job_id": job_id})
+
+
+# ============================================================
+# GitHub Downloader Routes
+# ============================================================
 
 @app.route("/")
 def index():
@@ -124,7 +350,7 @@ def download_repo():
             download_name=f"{repo}.zip"
         )
     except requests.exceptions.HTTPError as e:
-        error_msg = f"Failed to access repository. Check if the URL is correct and the repository exists."
+        error_msg = "Failed to access repository. Check if the URL is correct and the repository exists."
         if e.response.status_code == 401:
             error_msg = "Authentication failed. Please check your GitHub token."
         elif e.response.status_code == 404:
@@ -134,35 +360,6 @@ def download_repo():
         return render_template("github_downloader.html", error=str(e))
     except Exception as e:
         return render_template("github_downloader.html", error=f"An error occurred: {str(e)}")
-
-
-@app.route("/text-to-voice")
-def text_to_voice():
-    """Text-to-voice tool page."""
-    return render_template("text_to_voice.html")
-
-
-@app.route("/generate-voice", methods=["POST"])
-def generate_voice():
-    """Handle text-to-voice conversion."""
-    text = request.form.get("text", "").strip()
-    language = request.form.get("language", "en")
-    
-    if not text:
-        return render_template("text_to_voice.html", error="Please provide some text")
-    
-    if len(text) > 5000:
-        return render_template("text_to_voice.html", error="Text is too long. Maximum 5000 characters allowed.")
-    
-    try:
-        audio_path = text_to_speech(text, language)
-        return send_file(
-            audio_path,
-            as_attachment=True,
-            download_name="speech.mp3"
-        )
-    except Exception as e:
-        return render_template("text_to_voice.html", error=f"An error occurred: {str(e)}")
 
 
 if __name__ == "__main__":
