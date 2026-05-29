@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 600px;
+            max-width: 800px;
             margin: 0 auto;
         }
 
@@ -44,12 +44,21 @@
             border-radius: 15px;
             padding: 35px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 25px;
         }
 
         h1 {
             font-size: 1.8rem;
             color: #333;
             margin-bottom: 8px;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
         }
 
         .description {
@@ -77,7 +86,7 @@
             font-size: 1rem;
             font-family: inherit;
             resize: vertical;
-            min-height: 150px;
+            min-height: 120px;
             transition: border-color 0.2s;
         }
 
@@ -109,7 +118,7 @@
             margin-top: 5px;
         }
 
-        button {
+        .btn-submit {
             width: 100%;
             padding: 14px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -122,13 +131,9 @@
             transition: transform 0.2s, box-shadow 0.2s;
         }
 
-        button:hover {
+        .btn-submit:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        button:active {
-            transform: translateY(0);
         }
 
         .error {
@@ -139,23 +144,180 @@
             margin-bottom: 20px;
             border-left: 4px solid #d32f2f;
         }
+
+        .success {
+            background: #e0ffe0;
+            color: #2e7d32;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2e7d32;
+        }
+
+        /* Job List Styles */
+        .job-list {
+            list-style: none;
+        }
+
+        .job-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            transition: background-color 0.2s;
+        }
+
+        .job-item:hover {
+            background-color: #f9f9f9;
+        }
+
+        .job-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .job-text {
+            color: #333;
+            font-size: 0.95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 5px;
+        }
+
+        .job-meta {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .job-status {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-right: 10px;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-processing {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .job-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-download {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform 0.2s;
+        }
+
+        .btn-download:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-refresh {
+            padding: 8px 16px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-refresh:hover {
+            background: #5a6268;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: #888;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #ccc;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .header-actions h2 {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <a href="/" class="back-link">← Back to Toolbox</a>
 
+        <!-- Submit Form -->
         <div class="card">
             <h1>🎙️ Text to Voice</h1>
             <p class="description">
-                Enter text in English or Chinese and download it as an audio file.
+                Submit text in English or Chinese for voice generation. Your job will be processed and you can download the audio when ready.
             </p>
 
             {% if error %}
             <div class="error">{{ error }}</div>
             {% endif %}
 
-            <form method="POST" action="/generate-voice">
+            {% if success %}
+            <div class="success">{{ success }}</div>
+            {% endif %}
+
+            <form method="POST" action="/tts/submit" onsubmit="return submitForm()">
                 <div class="form-group">
                     <label for="text">Your Text</label>
                     <textarea id="text" name="text" placeholder="Enter text to convert to speech..." 
@@ -171,8 +333,19 @@
                     </select>
                 </div>
 
-                <button type="submit">Generate Audio</button>
+                <button type="submit" class="btn-submit">Submit for Processing</button>
             </form>
+        </div>
+
+        <!-- Job List -->
+        <div class="card">
+            <div class="header-actions">
+                <h2>📋 Your Jobs</h2>
+                <button class="btn-refresh" onclick="refreshJobs()">↻ Refresh</button>
+            </div>
+            <ul class="job-list" id="jobList">
+                <li class="empty-state">Loading jobs...</li>
+            </ul>
         </div>
     </div>
 
@@ -182,6 +355,101 @@
             const charCount = document.getElementById('charCount');
             charCount.textContent = textarea.value.length;
         }
+
+        function submitForm() {
+            return true; // Form will submit normally via POST
+        }
+
+        function formatDateTime(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleString();
+        }
+
+        function getStatusClass(status) {
+            const classes = {
+                'pending': 'status-pending',
+                'processing': 'status-processing',
+                'completed': 'status-completed',
+                'failed': 'status-failed'
+            };
+            return classes[status] || 'status-pending';
+        }
+
+        function getStatusIcon(status) {
+            const icons = {
+                'pending': '⏳',
+                'processing': '🔄',
+                'completed': '✅',
+                'failed': '❌'
+            };
+            return icons[status] || '⏳';
+        }
+
+        async function refreshJobs() {
+            const jobList = document.getElementById('jobList');
+            jobList.innerHTML = '<li class="empty-state"><span class="spinner"></span> Loading jobs...</li>';
+
+            try {
+                const response = await fetch('/api/tts/jobs');
+                const data = await response.json();
+
+                if (!data.jobs || data.jobs.length === 0) {
+                    jobList.innerHTML = '<li class="empty-state">No jobs yet. Submit text above to create one.</li>';
+                    return;
+                }
+
+                jobList.innerHTML = '';
+                data.jobs.forEach(job => {
+                    const li = document.createElement('li');
+                    li.className = 'job-item';
+                    li.innerHTML = `
+                        <div class="job-info">
+                            <div class="job-text" title="${escapeHtml(job.text)}">${escapeHtml(job.text)}</div>
+                            <div class="job-meta">
+                                <span class="job-status ${getStatusClass(job.status)}">${getStatusIcon(job.status)} ${job.status}</span>
+                                <span>${job.language.toUpperCase()}</span>
+                                <span>• ${formatDateTime(job.created_at)}</span>
+                            </div>
+                        </div>
+                        <div class="job-actions">
+                            ${job.status === 'completed' ? 
+                                `<a href="/tts/download/${job.id}" class="btn-download">⬇ Download</a>` :
+                                job.status === 'processing' ?
+                                `<span style="color: #667eea; font-size: 0.9rem;"><span class="spinner"></span> Processing...</span>` :
+                                ''
+                            }
+                        </div>
+                    `;
+                    jobList.appendChild(li);
+                });
+            } catch (error) {
+                jobList.innerHTML = '<li class="empty-state">Failed to load jobs. Please try again.</li>';
+                console.error('Error loading jobs:', error);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Load jobs on page load
+        document.addEventListener('DOMContentLoaded', refreshJobs);
+
+        // Auto-refresh every 10 seconds if there are pending/processing jobs
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/tts/jobs');
+                const data = await response.json();
+                const hasActiveJobs = data.jobs.some(j => j.status === 'pending' || j.status === 'processing');
+                if (hasActiveJobs) {
+                    refreshJobs();
+                }
+            } catch (e) {
+                // Silent fail for auto-refresh
+            }
+        }, 10000);
     </script>
 </body>
 </html>
