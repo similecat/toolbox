@@ -32,6 +32,67 @@ python app.py
 - Download audio files when processing is complete
 - Maximum 5000 characters per submission
 
+## Running the TTS Worker
+
+The TTS worker is a background service that polls for pending jobs and generates audio using the VibeVoice model.
+
+### Prerequisites
+
+1. Ensure the VibeVoice model is downloaded locally at `VibeVoice/models/VibeVoice-1.5b` (or it will be fetched from HuggingFace automatically).
+2. Install Python dependencies in the VibeVoice directory:
+   ```bash
+   cd VibeVoice
+   pip install -e .
+   ```
+
+### Starting the Worker
+
+**Terminal 1** — Start the web application:
+```bash
+python app.py
+```
+
+**Terminal 2** — Start the TTS worker:
+```bash
+cd VibeVoice/demo
+python tts_worker.py
+```
+
+### Worker Command-Line Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--base_url` | `http://localhost:5000` | Base URL of the toolbox API |
+| `--model_path` | Auto-detect | Path to VibeVoice model (auto-detects `VibeVoice/models/VibeVoice-1.5b`) |
+| `--device` | Auto-detect | Device for inference: `cuda`, `mps`, `cpu` |
+| `--interval` | `5` | Polling interval in seconds |
+| `--cfg_scale` | `1.3` | CFG scale for generation |
+| `--seed` | None | Random seed for reproducibility |
+
+**Example with custom options:**
+```bash
+python tts_worker.py --base_url http://localhost:5000 --device cuda --interval 10
+```
+
+### Speaker Configuration
+
+The worker uses the following default speakers:
+- **English (`en`)**: Alice
+- **Chinese (`zh`)**: Xinran
+
+You can modify the speaker mapping in `VibeVoice/demo/tts_worker.py` under `SPEAKER_MAP`.
+
+### How It Works
+
+1. Worker polls `/api/tts/jobs?status=pending` every N seconds
+2. Picks up the oldest pending job (FIFO order)
+3. Marks the job as `processing`
+4. Generates audio using VibeVoice model
+5. Uploads the audio result back to the toolbox
+6. Job status changes to `completed` and the user can download the audio
+
+Press `Ctrl+C` to stop the worker gracefully.
+
 ## VibeVoice API Reference
 
 The Text-to-Voice tool provides REST APIs for vibevoice to process jobs.
