@@ -1,0 +1,1 @@
+Speaker 1: This is a short smoke test for VibeVoice inference.
