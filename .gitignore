@@ -29,3 +29,6 @@ data/
 *.egg-info/
 build/
 dist/
+
+# Large model files (too big for GitHub)
+VibeVoice/models/
