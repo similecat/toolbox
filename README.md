@@ -5,19 +5,87 @@ A collection of useful web tools built with Python Flask.
 - **GitHub Repo Downloader**: Download any GitHub repository as a ZIP file
 - **Text to Voice**: Submit text for voice generation with job-based processing
 
+## Quick Start
+
+```bash
+# Clone the repository
+git clone git@github.com:similecat/toolbox.git
+cd toolbox
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the auto-restart monitor (recommended for production)
+python auto_restart.py
+
+# Or start manually
+python app.py
+```
+
+Open your browser and navigate to `http://localhost:5000`
+
+## Auto-Restart Monitor
+
+The `auto_restart.py` script is a cross-platform daemon that keeps the app running and automatically updates it daily.
+
+### Features
+- **Daily Auto-Update**: At 2:00 AM every day, stops the app, pulls latest code from `prod` branch, and restarts
+- **Cross-Platform**: Works on both Windows and Linux
+- **Auto-Recovery**: Starts the app on launch if not already running
+- **Graceful Shutdown**: Press `Ctrl+C` to stop cleanly
+
+### Usage
+
+```bash
+# Start the monitor
+python auto_restart.py
+
+# The script will:
+# 1. Start the Flask app if not running
+# 2. Monitor and wait until 2:00 AM
+# 3. Stop app → git pull → restart app
+# 4. Repeat daily
+```
+
+### Configuration
+
+Edit these variables at the top of `auto_restart.py`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `RESTART_HOUR` | `2` | Hour to perform daily restart (24h format) |
+| `RESTART_MINUTE` | `0` | Minute to perform daily restart |
+| `CHECK_INTERVAL` | `60` | Seconds between status checks |
+| `BRANCH` | `"prod"` | Git branch to pull from |
+
 ## Setup
+
+### Full Setup
 
 1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Run the application:
+2. Install VibeVoice (for Text-to-Voice feature):
+```bash
+cd VibeVoice
+pip install -e .
+```
+
+3. Run the application (choose one method):
+
+**Option A — Auto-restart monitor (recommended):**
+```bash
+python auto_restart.py
+```
+
+**Option B — Manual start:**
 ```bash
 python app.py
 ```
 
-3. Open your browser and navigate to `http://localhost:5000`
+4. Open your browser and navigate to `http://localhost:5000`
 
 ## Tools
 
@@ -47,10 +115,12 @@ The TTS worker is a background service that polls for pending jobs and generates
 
 ### Starting the Worker
 
-**Terminal 1** — Start the web application:
+**Terminal 1** — Start the web application (or use auto_restart.py):
 ```bash
 python app.py
 ```
+
+> **Tip:** For production use, replace `python app.py` with `python auto_restart.py` to get automatic daily updates at 2 AM.
 
 **Terminal 2** — Start the TTS worker:
 ```bash
