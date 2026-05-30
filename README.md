@@ -22,7 +22,9 @@ python auto_restart.py
 python app.py
 ```
 
-Open your browser and navigate to `http://localhost:5000`
+Open your browser and navigate to `http://localhost`
+
+> **Note:** Port 80 is a privileged port. On Windows, you must **run Python as Administrator** to bind to it.
 
 ## Auto-Restart Monitor
 
@@ -85,7 +87,7 @@ python auto_restart.py
 python app.py
 ```
 
-4. Open your browser and navigate to `http://localhost:5000`
+4. Open your browser and navigate to `http://localhost`
 
 ## Tools
 
@@ -132,7 +134,7 @@ python tts_worker.py
 
 | Option | Default | Description |
 |---|---|---|
-| `--base_url` | `http://localhost:5000` | Base URL of the toolbox API |
+| `--base_url` | `http://localhost` | Base URL of the toolbox API |
 | `--model_path` | Auto-detect | Path to VibeVoice model (auto-detects `VibeVoice/models/VibeVoice-1.5b`) |
 | `--device` | Auto-detect | Device for inference: `cuda`, `mps`, `cpu` |
 | `--interval` | `5` | Polling interval in seconds |
@@ -141,7 +143,7 @@ python tts_worker.py
 
 **Example with custom options:**
 ```bash
-python tts_worker.py --base_url http://localhost:5000 --device cuda --interval 10
+python tts_worker.py --base_url http://localhost --device cuda --interval 10
 ```
 
 ### Speaker Configuration
