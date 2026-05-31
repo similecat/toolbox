@@ -15,11 +15,12 @@ import os
 import requests
 import datetime
 import traceback
+from typing import Optional
 
 # Add the demo directory to path so we can import inference_service
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from inference_service import initialize, generate_audio
+from inference_service import initialize, generate_audio, load_model, unload_model, is_model_loaded
 
 
 # ============================================================
@@ -215,56 +216,104 @@ def process_job(base_url: str, job: dict) -> bool:
         return False
 
 
-def run_worker(base_url: str, poll_interval: int = 5):
+def run_worker(base_url: str, poll_interval: int = 5, idle_timeout: int = 60,
+               model_path: Optional[str] = None, device: Optional[str] = None,
+               cfg_scale: float = 1.3, seed: Optional[int] = None):
     """
     Main worker loop that polls for pending jobs and processes them.
+    Model is lazily loaded when jobs are found and unloaded after idle_timeout seconds.
+
+    Args:
+        base_url: Base URL of the toolbox API
+        poll_interval: Seconds between polls
+        idle_timeout: Seconds of idle time before unloading the model
+        model_path: Path to model (passed to load_model)
+        device: Device for inference (passed to load_model)
+        cfg_scale: CFG scale (passed to load_model)
+        seed: Random seed (passed to load_model)
     """
     print("=" * 60)
     print("VibeVoice TTS Worker Service")
     print("=" * 60)
     print(f"Base URL: {base_url}")
     print(f"Poll interval: {poll_interval} seconds")
+    print(f"Idle timeout: {idle_timeout} seconds (model will unload after this idle period)")
     print(f"Started at: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Press Ctrl+C to stop")
     print("=" * 60)
-    
+
     consecutive_errors = 0
-    
+    idle_start: Optional[float] = None  # When did we start being idle?
+
     while True:
         try:
             # Get pending jobs
             pending_jobs = get_pending_jobs(base_url)
-            
+
             if not pending_jobs:
                 consecutive_errors = 0
-                # Quiet when no jobs
-                # print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] No pending jobs, waiting...")
+
+                # Track idle time
+                if idle_start is None:
+                    idle_start = time.time()
+                    print(f"\n[{datetime.datetime.now().strftime('%H:%M:%S')}] No pending jobs, entering idle mode...")
+
+                idle_elapsed = time.time() - idle_start
+                if is_model_loaded() and idle_elapsed >= idle_timeout:
+                    unload_model()
+
                 time.sleep(poll_interval)
                 continue
-            
+
+            # We have jobs — reset idle timer
+            idle_start = None
+
             consecutive_errors = 0
             print(f"\n[{datetime.datetime.now().strftime('%H:%M:%S')}] Found {len(pending_jobs)} pending job(s)")
-            
-            # Process the first pending job (oldest first since API returns newest first)
-            # The API returns newest first, so take the last item for FIFO
-            job_to_process = pending_jobs[-1]
-            
-            success = process_job(base_url, job_to_process)
-            
-            if success:
-                print(f"[WORKER] Job processed successfully")
-            else:
-                print(f"[WORKER] Job processing failed")
-                
+
+            # Load model if not already loaded
+            if not is_model_loaded():
+                print(f"[WORKER] No model loaded, loading now...")
+                load_start = time.time()
+                if not load_model(
+                    model_path=model_path,
+                    device=device,
+                    cfg_scale=cfg_scale,
+                    seed=seed
+                ):
+                    print("[ERROR] Failed to load model, will retry next poll")
+                    time.sleep(poll_interval)
+                    continue
+                print(f"[WORKER] Model loaded in {time.time() - load_start:.2f} seconds")
+
+            # Process ALL pending jobs while model is loaded (batch processing)
+            # The API returns newest first, so reverse for FIFO
+            jobs_to_process = list(reversed(pending_jobs))
+            for job_to_process in jobs_to_process:
+                success = process_job(base_url, job_to_process)
+
+                if success:
+                    print(f"[WORKER] Job processed successfully")
+                else:
+                    print(f"[WORKER] Job processing failed")
+
+                # Re-fetch pending jobs in case new ones arrived
+                pending_jobs = get_pending_jobs(base_url)
+                if not pending_jobs:
+                    break
+
         except KeyboardInterrupt:
             print("\n\n[WORKER] Received shutdown signal, stopping...")
+            # Unload model on shutdown
+            if is_model_loaded():
+                unload_model()
             break
         except Exception as e:
             consecutive_errors += 1
             error_msg = f"{type(e).__name__}: {str(e)}"
             print(f"\n[WORKER] Unexpected error in main loop ({consecutive_errors} consecutive): {error_msg}")
             traceback.print_exc()
-            
+
             # Back off on repeated errors
             backoff_time = min(poll_interval * (2 ** min(consecutive_errors - 1, 3)), 60)
             print(f"[WORKER] Backing off for {backoff_time} seconds...")
@@ -272,7 +321,7 @@ def run_worker(base_url: str, poll_interval: int = 5):
         finally:
             # Always wait before next poll
             time.sleep(poll_interval)
-    
+
     print(f"\n[WORKER] Service stopped at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 
@@ -303,6 +352,12 @@ def parse_args():
         help="Polling interval in seconds (default: 5)"
     )
     parser.add_argument(
+        "--idle_timeout",
+        type=int,
+        default=60,
+        help="Seconds of idle time before unloading the model (default: 60)"
+    )
+    parser.add_argument(
         "--cfg_scale",
         type=float,
         default=1.3,
@@ -319,29 +374,27 @@ def parse_args():
 
 def main():
     args = parse_args()
-    
-    # Initialize the model
-    print("[INIT] Initializing VibeVoice model...")
-    init_start = time.time()
-    
-    try:
-        initialize(
-            model_path=args.model_path,
-            device=args.device,
-            cfg_scale=args.cfg_scale,
-            seed=args.seed
-        )
-        
-        init_time = time.time() - init_start
-        print(f"[INIT] Model initialized in {init_time:.2f} seconds")
-        
-    except Exception as e:
-        print(f"[FATAL] Failed to initialize model: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        sys.exit(1)
-    
-    # Start the worker loop
-    run_worker(base_url=args.base_url, poll_interval=args.interval)
+
+    # Store model config for lazy loading (no model loaded at startup)
+    print("=" * 60)
+    print("VibeVoice TTS Worker — Lazy Load Mode")
+    print("=" * 60)
+    print(f"Model will be loaded on demand when jobs arrive")
+    print(f"Model will unload after {args.idle_timeout}s of idle time")
+    print(f"Model path: {args.model_path or '(auto-detect)'}")
+    print(f"Device: {args.device or '(auto-detect)'}")
+    print("=" * 60)
+
+    # Start the worker loop (model loads lazily on first job)
+    run_worker(
+        base_url=args.base_url,
+        poll_interval=args.interval,
+        idle_timeout=args.idle_timeout,
+        model_path=args.model_path,
+        device=args.device,
+        cfg_scale=args.cfg_scale,
+        seed=args.seed,
+    )
 
 
 if __name__ == "__main__":

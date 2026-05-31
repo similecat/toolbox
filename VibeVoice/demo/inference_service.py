@@ -78,13 +78,244 @@ class VoiceMapper:
 
 
 # ============================================================
-# Global model state (loaded once at startup)
+# Global model state (lazy-loaded on demand)
 # ============================================================
 
 _model = None
 _processor = None
 _voice_mapper = None
 _device = None
+_model_config: dict = {}  # Store init params so we can reload later
+
+
+def is_model_loaded() -> bool:
+    """Check whether the model is currently loaded in memory/GPU."""
+    return _model is not None and _processor is not None
+
+
+def load_model(model_path: str = None,
+               device: Optional[str] = None,
+               cfg_scale: float = 1.3,
+               seed: Optional[int] = None) -> bool:
+    """
+    Load the VibeVoice model into memory/GPU.
+    Call this before calling generate_audio().
+
+    Returns True on success, False on failure.
+    """
+    global _model, _processor, _voice_mapper, _device, _model_config
+
+    if is_model_loaded():
+        print("[MODEL] Already loaded, skipping.")
+        return True
+
+    # Auto-detect local model path
+    if model_path is None:
+        local_model_path = os.path.join(os.path.dirname(__file__), "..", "models", "VibeVoice-1.5b")
+        if os.path.exists(local_model_path):
+            model_path = local_model_path
+            print(f"[MODEL] Using local model: {model_path}")
+        else:
+            model_path = "microsoft/VibeVoice-1.5b"
+            print(f"[MODEL] Local model not found, using HuggingFace: {model_path}")
+
+    # Auto-detect device if not specified
+    if device is None:
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
+
+    # Normalize 'mpx' typo to 'mps'
+    if device.lower() == "mpx":
+        print("[MODEL] Note: device 'mpx' detected, treating it as 'mps'.")
+        device = "mps"
+
+    # Validate device availability
+    if device == "mps" and not torch.backends.mps.is_available():
+        print("[MODEL] Warning: MPS not available. Falling back to CPU.")
+        device = "cpu"
+
+    if device == "cuda" and not _cuda_runtime_usable():
+        device = "cpu"
+
+    _device = device
+    print(f"[MODEL] Loading model on device: {device}")
+
+    if seed is not None:
+        print(f"[MODEL] Setting seed: {seed}")
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
+    # Save config for potential reload
+    _model_config = {
+        "model_path": model_path,
+        "device": device,
+        "cfg_scale": cfg_scale,
+        "seed": seed,
+    }
+
+    try:
+        # Initialize voice mapper
+        _voice_mapper = VoiceMapper()
+
+        # Load processor
+        print(f"[MODEL] Loading processor & model from {model_path}")
+        _processor = VibeVoiceProcessor.from_pretrained(model_path)
+
+        # Decide dtype & attention implementation
+        if device == "mps":
+            load_dtype = torch.float32
+            attn_impl_primary = "sdpa"
+        elif device == "cuda":
+            load_dtype = torch.bfloat16
+            attn_impl_primary = "flash_attention_2"
+        else:  # cpu
+            load_dtype = torch.float32
+            attn_impl_primary = "sdpa"
+
+        print(f"[MODEL] Using torch_dtype: {load_dtype}, attn_implementation: {attn_impl_primary}")
+
+        # Load model
+        try:
+            if device == "mps":
+                _model = VibeVoiceForConditionalGenerationInference.from_pretrained(
+                    model_path,
+                    torch_dtype=load_dtype,
+                    attn_implementation=attn_impl_primary,
+                    device_map=None,
+                )
+                _model.to("mps")
+            elif device == "cuda":
+                _model = VibeVoiceForConditionalGenerationInference.from_pretrained(
+                    model_path,
+                    torch_dtype=load_dtype,
+                    device_map="cuda",
+                    attn_implementation=attn_impl_primary,
+                )
+            else:  # cpu
+                _model = VibeVoiceForConditionalGenerationInference.from_pretrained(
+                    model_path,
+                    torch_dtype=load_dtype,
+                    device_map="cpu",
+                    attn_implementation=attn_impl_primary,
+                )
+        except Exception as e:
+            if attn_impl_primary == 'flash_attention_2':
+                print(f"[MODEL] Error loading model with flash_attention_2. Falling back to SDPA.")
+                _model = VibeVoiceForConditionalGenerationInference.from_pretrained(
+                    model_path,
+                    torch_dtype=load_dtype,
+                    device_map=(device if device in ("cuda", "cpu") else None),
+                    attn_implementation='sdpa'
+                )
+                if device == "mps":
+                    _model.to("mps")
+            else:
+                raise e
+
+        _model.eval()
+        _model.set_ddpm_inference_steps(num_steps=10)
+
+        if hasattr(_model.model, 'language_model'):
+            print(f"[MODEL] Language model attention: {_model.model.language_model.config._attn_implementation}")
+
+        print("[MODEL] Model loaded successfully.")
+        return True
+
+    except Exception as e:
+        print(f"[MODEL] Failed to load model: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        # Reset state on failure
+        _model = None
+        _processor = None
+        _voice_mapper = None
+        return False
+
+
+def _clear_gpu_tensors() -> None:
+    """Clear any lingering GPU tensors from inference."""
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+
+
+def _report_cuda_memory(tag: str = "") -> None:
+    """Print current CUDA memory stats for debugging."""
+    if not torch.cuda.is_available():
+        return
+    try:
+        allocated = torch.cuda.memory_allocated() / 1024**2
+        reserved = torch.cuda.memory_reserved() / 1024**2
+        print(f"[MODEL] CUDA {tag} — allocated: {allocated:.0f} MB, reserved: {reserved:.0f} MB")
+    except Exception:
+        pass
+
+
+def unload_model() -> None:
+    """
+    Aggressively offload the model from memory/GPU to free all resources.
+    Safe to call even if the model is not loaded.
+
+    Strategy:
+    1. Drop _processor FIRST (it may hold refs to tokenizer/model internals)
+    2. Zero out gradients
+    3. Call .cpu() on the model — this is the ONLY reliable way to move ALL
+       tensors off GPU when device_map="cuda" is used (accelerate manages
+       tensor placement internally, so clearing _parameters doesn't work)
+    4. Drop all globals
+    5. Force GC + empty CUDA cache
+    """
+    global _model, _processor, _voice_mapper
+
+    if not is_model_loaded():
+        print("[MODEL] Already unloaded.")
+        return
+
+    print("[MODEL] Unloading model to free resources...")
+    _report_cuda_memory("before unload")
+
+    # Drop _processor FIRST — it may hold references to model/tokenizer internals
+    _processor = None
+    _voice_mapper = None
+
+    # Zero out gradients (prevents gradient-tracking refs from lingering)
+    if _model is not None:
+        try:
+            for param in _model.parameters():
+                if param.grad is not None:
+                    param.grad = None
+        except Exception:
+            pass
+
+        # .cpu() is the ONLY reliable way to move ALL tensors off GPU
+        # when device_map="cuda" is used (accelerate wraps the model)
+        if _device and _device != "cpu":
+            print(f"[MODEL] Moving model from {_device} -> CPU...")
+            _model = _model.cpu()
+            _report_cuda_memory("after .cpu()")
+
+        # Explicitly delete the model object
+        del _model
+        _model = None
+
+    # Aggressive garbage collection — multiple passes for reference cycles
+    import gc
+    gc.collect()
+    gc.collect()
+    gc.collect()
+
+    # Free CUDA cache
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+
+    _report_cuda_memory("after GC + empty_cache")
+    print("[MODEL] Model unloaded successfully.")
 
 
 def initialize(model_path: str = None,
@@ -311,8 +542,12 @@ def generate_audio(text: str, language: str = "en",
             outputs.speech_outputs[0],
             output_path=output_path,
         )
-        
+
         print(f"Saved audio to {output_path}")
+
+        # Clear lingering GPU tensors after inference
+        _clear_gpu_tensors()
+
         return output_path
         
     except Exception as e:
