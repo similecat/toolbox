@@ -6,6 +6,7 @@
 #   sudo bash setup_nginx.sh
 #
 # This script will:
+#   0. Clone or update the app to /opt/toolbox (from prod branch)
 #   1. Install nginx
 #   2. Create a systemd service for gunicorn
 #   3. Configure nginx as a reverse proxy on port 80
@@ -17,6 +18,8 @@ set -euo pipefail
 # --- Configuration ---
 APP_NAME="toolbox"
 APP_DIR="/opt/toolbox"
+GIT_REPO="https://github.com/similecat/toolbox.git"
+GIT_BRANCH="prod"
 SOCKET_PATH="/run/gunicorn/${APP_NAME}.sock"
 USER="www-data"
 WORKERS=2
@@ -36,6 +39,25 @@ error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 if [[ $EUID -ne 0 ]]; then
     error "This script must be run as root (use sudo)"
 fi
+
+# --- Step 0: Clone or update the app ---
+if [[ -d "${APP_DIR}" ]]; then
+    info "App directory already exists at ${APP_DIR}, updating..."
+    cd "${APP_DIR}"
+    git fetch origin
+    git reset --hard "origin/${GIT_BRANCH}"
+else
+    info "Cloning app to ${APP_DIR}..."
+    mkdir -p "${APP_DIR}"
+    cd "${APP_DIR}"
+    git init
+    git remote add origin "${GIT_REPO}"
+    git fetch origin "${GIT_BRANCH}"
+    git checkout -b "${GIT_BRANCH}" "origin/${GIT_BRANCH}"
+fi
+
+chown -R "${USER}:${USER}" "${APP_DIR}"
+info "App is ready at ${APP_DIR}"
 
 # --- Step 1: Install nginx ---
 info "Installing nginx..."
