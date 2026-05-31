@@ -146,6 +146,9 @@ server {
     listen 80;
     server_name _;
 
+    # Allow large file uploads (500 MB for audio files)
+    client_max_body_size 500M;
+
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
