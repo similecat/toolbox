@@ -120,12 +120,14 @@ sudo bash setup_nginx.sh
 ```
 
 The script will:
-1. Clone or update the app to `/opt/toolbox` (from `prod` branch)
+1. Pull latest code to a temp directory and sync to `/opt/toolbox` (from `prod` branch)
 2. Install nginx
 3. Install Python dependencies
 4. Create a `systemd` service for gunicorn (with gevent workers)
 5. Configure nginx to proxy port 80 to gunicorn via a Unix socket
 6. Enable and start both services
+
+> **Note:** The app directory `/opt/toolbox` is **not** a git repo. Files are synced via `rsync`, preserving runtime data in `instance/` and `data/`.
 
 ### Manual Setup
 
@@ -183,13 +185,13 @@ sudo systemctl restart nginx
 
 ### Redeploying
 
-To update the app with the latest code (dependencies assumed installed):
+To update the app with the latest code (pulls from `prod` and reinstalls dependencies):
 
 ```bash
 sudo bash redeploy.sh
 ```
 
-This pulls the latest changes from the `prod` branch and restarts gunicorn automatically.
+This pulls the latest changes, syncs them via `rsync` (preserving `instance/` and `data/`), reinstalls Python dependencies, and restarts gunicorn automatically.
 
 > **Tip:** After deployment, the TTS worker should point to the correct base URL:
 > ```bash

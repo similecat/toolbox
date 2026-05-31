@@ -7,11 +7,12 @@
 #
 # This script will:
 #   1. Pull latest code from the prod branch
-#   2. Restart the gunicorn service
+#   2. Sync files to /opt/toolbox (preserving runtime data)
+#   3. Reinstall Python dependencies
+#   4. Restart the gunicorn service
 #
 # Assumes:
 #   - App is already deployed at /opt/toolbox
-#   - Dependencies are already installed
 #   - Gunicorn systemd service is configured
 # ============================================================
 
@@ -20,6 +21,7 @@ set -euo pipefail
 # --- Configuration ---
 APP_NAME="toolbox"
 APP_DIR="/opt/toolbox"
+GIT_REPO="https://github.com/similecat/toolbox.git"
 GIT_BRANCH="prod"
 
 # --- Colors ---
@@ -43,26 +45,37 @@ if [[ ! -d "${APP_DIR}" ]]; then
 fi
 
 info "Redeploying ${APP_NAME}..."
+
+# --- Pull latest code to temp dir ---
+TEMP_DIR=$(mktemp -d /tmp/toolbox_deploy_XXXXXX)
+info "Pulling latest code..."
+
+cd "${TEMP_DIR}"
+git init -q
+git remote add origin "${GIT_REPO}"
+git fetch origin "${GIT_BRANCH}" -q
+git checkout -b "${GIT_BRANCH}" "origin/${GIT_BRANCH}" -q
+
+# --- Sync files to APP_DIR ---
+rsync -av --delete \
+    --exclude='instance/' \
+    --exclude='data/' \
+    --exclude='__pycache__/' \
+    --exclude='*.pyc' \
+    "${TEMP_DIR}/" "${APP_DIR}/"
+
+rm -rf "${TEMP_DIR}"
+info "Files synced"
+
+# --- Reinstall Python dependencies ---
+info "Installing Python dependencies..."
 cd "${APP_DIR}"
-
-# --- Pull latest code ---
-info "Fetching latest changes..."
-if git fetch origin "${GIT_BRANCH}"; then
-    CURRENT=$(git rev-parse HEAD)
-    LATEST=$(git rev-parse "origin/${GIT_BRANCH}")
-
-    if [[ "${CURRENT}" == "${LATEST}" ]]; then
-        info "Already up to date (commit ${CURRENT:0:8})"
-    else
-        info "Updating from ${CURRENT:0:8} to ${LATEST:0:8}"
-        git reset --hard "origin/${GIT_BRANCH}"
-    fi
-else
-    error "Failed to fetch from remote"
-fi
+python3 -m pip install -q -r requirements.txt
+info "Dependencies installed"
 
 # --- Restart gunicorn ---
 info "Restarting gunicorn service..."
+systemctl daemon-reload
 if systemctl restart "${APP_NAME}"; then
     sleep 1
     if systemctl is-active --quiet "${APP_NAME}"; then
