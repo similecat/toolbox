@@ -283,6 +283,26 @@ def tts_update_status(job_id):
     return jsonify({"status": job["status"], "job_id": job_id})
 
 
+@app.route("/api/tts/job/<job_id>/retry", methods=["POST"])
+def tts_retry_job(job_id):
+    """Retry a failed job by resetting its status to pending.
+    
+    Only failed jobs can be retried.
+    Returns: {"success": true, "job_id": "..."}
+    """
+    job = job_db.get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    
+    if job["status"] != "failed":
+        return jsonify({"error": "Only failed jobs can be retried"}), 400
+    
+    # Reset to pending so the worker will pick it up again
+    job_db.update_job_status(job_id, "pending")
+    
+    return jsonify({"success": True, "job_id": job_id})
+
+
 @app.route("/api/tts/job/<job_id>", methods=["DELETE"])
 def tts_delete_job(job_id):
     """Delete a job and its associated audio file.

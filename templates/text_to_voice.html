@@ -263,6 +263,24 @@
             background: linear-gradient(135deg, #c82333, #bd2130);
         }
 
+        .btn-retry {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #fd7e14, #e8590c);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform 0.2s;
+        }
+
+        .btn-retry:hover {
+            transform: translateY(-1px);
+            background: linear-gradient(135deg, #e8590c, #d9480f);
+        }
+
         .btn-refresh {
             padding: 8px 16px;
             background: #6c757d;
@@ -507,6 +525,8 @@
                                 `<a href="/tts/download/${job.id}" class="btn-download">⬇ Download</a>` :
                                 job.status === 'processing' ?
                                 `<span style="color: #667eea; font-size: 0.9rem;"><span class="spinner"></span> Processing...</span>` :
+                                job.status === 'failed' ?
+                                `<button class="btn-retry" onclick="retryJob('${job.id}')">🔄 Retry</button>` :
                                 ''
                             }
                             ${job.status !== 'processing' ? 
@@ -543,6 +563,29 @@
             } catch (error) {
                 alert('Failed to delete job. Please try again.');
                 console.error('Error deleting job:', error);
+            }
+        }
+
+        async function retryJob(jobId) {
+            if (!confirm('Retry this failed job? It will be queued for processing again.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/tts/job/${jobId}/retry`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    // Successfully retried, refresh the job list
+                    refreshJobs();
+                } else {
+                    const errorData = await response.json();
+                    alert(`Failed to retry job: ${errorData.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert('Failed to retry job. Please try again.');
+                console.error('Error retrying job:', error);
             }
         }
 
