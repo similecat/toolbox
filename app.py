@@ -11,6 +11,9 @@ import db as job_db
 
 app = Flask(__name__)
 
+# Allow larger file uploads (500 MB limit for audio files)
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
+
 # Base URL for GitHub API
 GITHUB_API_BASE = "https://api.github.com"
 # GitHub repositories raw content URL
