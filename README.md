@@ -115,16 +115,17 @@ For production use on Ubuntu/Debian, the recommended setup is **Nginx** as a rev
 A one-command setup script is provided:
 
 ```bash
-# Clone and deploy to /opt/toolbox
+# Clone the repo, deploy to /opt/toolbox, and configure nginx + gunicorn
 sudo bash setup_nginx.sh
 ```
 
 The script will:
-1. Install nginx
-2. Install Python dependencies
-3. Create a `systemd` service for gunicorn (with gevent workers)
-4. Configure nginx to proxy port 80 to gunicorn via a Unix socket
-5. Enable and start both services
+1. Clone or update the app to `/opt/toolbox` (from `prod` branch)
+2. Install nginx
+3. Install Python dependencies
+4. Create a `systemd` service for gunicorn (with gevent workers)
+5. Configure nginx to proxy port 80 to gunicorn via a Unix socket
+6. Enable and start both services
 
 ### Manual Setup
 
