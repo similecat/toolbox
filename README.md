@@ -106,6 +106,85 @@ gunicorn -w 1 -k gevent --bind 0.0.0.0:5000 app:app
 
 4. Open your browser and navigate to `http://localhost`
 
+## Production Deployment (Ubuntu / Linux)
+
+For production use on Ubuntu/Debian, the recommended setup is **Nginx** as a reverse proxy on port 80, with **Gunicorn** serving the Flask app via a Unix socket.
+
+### Quick Setup Script
+
+A one-command setup script is provided:
+
+```bash
+# Clone and deploy to /opt/toolbox
+sudo bash setup_nginx.sh
+```
+
+The script will:
+1. Install nginx
+2. Install Python dependencies
+3. Create a `systemd` service for gunicorn (with gevent workers)
+4. Configure nginx to proxy port 80 to gunicorn via a Unix socket
+5. Enable and start both services
+
+### Manual Setup
+
+If you prefer to set things up manually:
+
+```bash
+# 1. Install nginx
+sudo apt update && sudo apt install -y nginx
+
+# 2. Install Python dependencies
+pip3 install -r requirements.txt
+
+# 3. Start gunicorn (Unix socket recommended for production)
+sudo gunicorn -w 2 -k gevent \
+    --bind unix:/run/gunicorn/toolbox.sock \
+    --access-logfile - --error-logfile - \
+    app:app
+```
+
+Then configure nginx (`/etc/nginx/sites-available/toolbox`):
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://unix:/run/gunicorn/toolbox.sock;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+    }
+}
+```
+
+Enable the site and restart nginx:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/toolbox /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### Managing Services
+
+| Command | Description |
+|---|---|
+| `sudo systemctl status toolbox` | Check gunicorn status |
+| `sudo systemctl restart toolbox` | Restart gunicorn |
+| `sudo systemctl status nginx` | Check nginx status |
+| `journalctl -u toolbox` | View gunicorn logs |
+| `/var/log/nginx/` | Nginx access/error logs |
+
+> **Tip:** After deployment, the TTS worker should point to the correct base URL:
+> ```bash
+> cd VibeVoice/demo && python tts_worker.py --base_url http://localhost
+> ```
+
 ## Tools
 
 ### GitHub Repo Downloader
