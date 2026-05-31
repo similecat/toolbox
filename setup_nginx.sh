@@ -22,7 +22,7 @@ GIT_REPO="https://github.com/similecat/toolbox.git"
 GIT_BRANCH="prod"
 SOCKET_PATH="/run/gunicorn/${APP_NAME}.sock"
 USER="www-data"
-WORKERS=2
+WORKERS=1
 BIND="unix:${SOCKET_PATH}"
 
 # --- Colors ---
@@ -40,21 +40,30 @@ if [[ $EUID -ne 0 ]]; then
     error "This script must be run as root (use sudo)"
 fi
 
-# --- Step 0: Clone or update the app ---
-if [[ -d "${APP_DIR}" ]]; then
-    info "App directory already exists at ${APP_DIR}, updating..."
-    cd "${APP_DIR}"
-    git fetch origin
-    git reset --hard "origin/${GIT_BRANCH}"
-else
-    info "Cloning app to ${APP_DIR}..."
-    mkdir -p "${APP_DIR}"
-    cd "${APP_DIR}"
-    git init
-    git remote add origin "${GIT_REPO}"
-    git fetch origin "${GIT_BRANCH}"
-    git checkout -b "${GIT_BRANCH}" "origin/${GIT_BRANCH}"
-fi
+# --- Step 0: Pull latest code and deploy to APP_DIR ---
+TEMP_DIR=$(mktemp -d /tmp/toolbox_deploy_XXXXXX)
+info "Pulling latest code to ${TEMP_DIR}..."
+
+cd "${TEMP_DIR}"
+git init -q
+git remote add origin "${GIT_REPO}"
+git fetch origin "${GIT_BRANCH}" -q
+git checkout -b "${GIT_BRANCH}" "origin/${GIT_BRANCH}" -q
+
+# Ensure APP_DIR exists and copy all files
+mkdir -p "${APP_DIR}"
+
+# Remove old files in APP_DIR that are no longer in the repo
+# (but keep directories that might have runtime data like /instance/)
+rsync -av --delete \
+    --exclude='instance/' \
+    --exclude='data/' \
+    --exclude='__pycache__/' \
+    --exclude='*.pyc' \
+    "${TEMP_DIR}/" "${APP_DIR}/"
+
+# Clean up temp dir
+rm -rf "${TEMP_DIR}"
 
 chown -R "${USER}:${USER}" "${APP_DIR}"
 info "App is ready at ${APP_DIR}"
@@ -71,8 +80,11 @@ if ! command -v pip3 &> /dev/null; then
     apt-get install -y -qq python3-pip > /dev/null 2>&1
 fi
 
+# Install zope.event via apt so it lands in the system Python path (required by gevent)
+apt-get install -y -qq python3-zope.event > /dev/null 2>&1 || true
+
 cd "${APP_DIR}"
-pip3 install -q -r requirements.txt
+python3 -m pip install -q -r requirements.txt
 info "Python dependencies installed"
 
 # --- Step 3: Create gunicorn systemd service ---
@@ -80,6 +92,24 @@ info "Creating gunicorn systemd service..."
 
 mkdir -p /run/gunicorn
 chown "${USER}:${USER}" /run/gunicorn
+
+# Find gunicorn executable (check multiple possible locations)
+GUNICORN_PATH=""
+for path in "$(which gunicorn 2>/dev/null)" \
+            "$(python3 -c 'import gunicorn.app.wsgiapp; import os; print(os.path.dirname(gunicorn.app.wsgiapp.__file__))' 2>/dev/null)/../bin/gunicorn" \
+            "/usr/local/bin/gunicorn" \
+            "/usr/bin/gunicorn"; do
+    if [[ -x "$path" ]]; then
+        GUNICORN_PATH="$path"
+        break
+    fi
+done
+
+if [[ -z "${GUNICORN_PATH}" ]]; then
+    error "gunicorn not found. Make sure it's installed: pip3 install gunicorn"
+fi
+
+info "Using gunicorn at ${GUNICORN_PATH}"
 
 cat > /etc/systemd/system/${APP_NAME}.service <<EOF
 [Unit]
@@ -90,12 +120,13 @@ After=network.target
 User=${USER}
 Group=${USER}
 WorkingDirectory=${APP_DIR}
-ExecStart=${APP_DIR}/venv/bin/gunicorn \\
-    --workers ${WORKERS} \\
-    --worker-class gevent \\
-    --bind ${BIND} \\
-    --access-logfile - \\
-    --error-logfile - \\
+ExecStart=${GUNICORN_PATH} \
+    --workers ${WORKERS} \
+    --worker-class gevent \
+    --bind ${BIND} \
+    --access-logfile - \
+    --error-logfile - \
+    --timeout 120 \
     app:app
 
 Restart=on-failure
@@ -104,12 +135,6 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
-
-# If no venv, adjust path
-if [[ ! -d "${APP_DIR}/venv" ]]; then
-    info "No virtual env detected, using system Python..."
-    sed -i "s|${APP_DIR}/venv/bin/gunicorn|/usr/bin/gunicorn|" /etc/systemd/system/${APP_NAME}.service
-fi
 
 info "gunicorn service created"
 
@@ -133,7 +158,6 @@ server {
 
     # Proxy to gunicorn socket
     location / {
-        uwsgi_pass off;
         proxy_pass http://unix:${SOCKET_PATH};
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
