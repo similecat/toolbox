@@ -18,13 +18,18 @@ pip install -r requirements.txt
 # Start the auto-restart monitor (recommended for production)
 python auto_restart.py
 
-# Or start manually
-python app.py
+# Or start manually (Windows)
+python run.py
+# or
+waitress-serve --host=0.0.0.0 --port=80 run:app
+
+# Or start manually (Linux / WSL)
+gunicorn -w 1 -k gevent --bind 127.0.0.1:5000 app:app
 ```
 
 Open your browser and navigate to `http://localhost`
 
-> **Note:** Port 80 is a privileged port. On Windows, you must **run Python as Administrator** to bind to it.
+> **Note:** Port 80 is a privileged port. On Windows, you must **run Python as Administrator** to bind to it. The default port is `5000`.
 
 ## Auto-Restart Monitor
 
@@ -82,10 +87,22 @@ pip install -e .
 python auto_restart.py
 ```
 
-**Option B — Manual start:**
+**Option B — Manual start (Windows):**
 ```bash
-python app.py
+python run.py
 ```
+
+**Option B2 — Manual start (Windows, waitress CLI):**
+```bash
+waitress-serve --host=127.0.0.1 --port=8000 run:app
+```
+
+**Option C — Manual start (Linux / WSL with Gunicorn):**
+```bash
+gunicorn -w 1 -k gevent --bind 0.0.0.0:5000 app:app
+```
+
+> **Note:** Gunicorn requires Unix/Linux (it uses `fcntl`). On Windows, use `python run.py` or `waitress-serve`, both of which use waitress, a cross-platform WSGI server.
 
 4. Open your browser and navigate to `http://localhost`
 
@@ -118,11 +135,22 @@ The TTS worker is a background service that polls for pending jobs and generates
 ### Starting the Worker
 
 **Terminal 1** — Start the web application (or use auto_restart.py):
+
+**Windows:**
 ```bash
-python app.py
+python run.py
+```
+or
+```bash
+waitress-serve --host=127.0.0.1 --port=8000 run:app
 ```
 
-> **Tip:** For production use, replace `python app.py` with `python auto_restart.py` to get automatic daily updates at 2 AM.
+**Linux / WSL:**
+```bash
+gunicorn -w 1 -k gevent --bind 0.0.0.0:5000 app:app
+```
+
+> **Tip:** For production use, replace the above with `python auto_restart.py` to get automatic daily updates at 2 AM.
 
 **Terminal 2** — Start the TTS worker:
 ```bash
