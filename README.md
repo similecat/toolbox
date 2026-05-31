@@ -181,6 +181,16 @@ sudo systemctl restart nginx
 | `journalctl -u toolbox` | View gunicorn logs |
 | `/var/log/nginx/` | Nginx access/error logs |
 
+### Redeploying
+
+To update the app with the latest code (dependencies assumed installed):
+
+```bash
+sudo bash redeploy.sh
+```
+
+This pulls the latest changes from the `prod` branch and restarts gunicorn automatically.
+
 > **Tip:** After deployment, the TTS worker should point to the correct base URL:
 > ```bash
 > cd VibeVoice/demo && python tts_worker.py --base_url http://localhost
