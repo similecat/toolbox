@@ -159,6 +159,13 @@ server {
         expires 30d;
     }
 
+    # Audio files - served directly by Nginx for fast downloads
+    location /audio/ {
+        alias ${APP_DIR}/instance/audio/;
+        expires 7d;
+        add_header Content-Disposition 'attachment';
+    }
+
     # Proxy to gunicorn socket
     location / {
         proxy_pass http://unix:${SOCKET_PATH};
