@@ -152,7 +152,12 @@ def tts_submit_form():
 
 @app.route("/tts/download/<job_id>", methods=["GET"])
 def tts_download(job_id):
-    """Download audio file for a completed job."""
+    """Redirect to Nginx for audio file download.
+    
+    Instead of using send_file (which streams through Flask/Gunicorn),
+    we do a lightweight DB lookup then redirect to an Nginx-served static path.
+    Nginx handles the actual file transfer, which is much faster for large files.
+    """
     job = job_db.get_job(job_id)
     if not job:
         return render_template("text_to_voice.html", error="Job not found")
@@ -163,10 +168,28 @@ def tts_download(job_id):
     if not job["audio_path"] or not os.path.exists(job["audio_path"]):
         return render_template("text_to_voice.html", error="Audio file not found")
     
+    # Extract just the filename from the full audio_path
+    filename = os.path.basename(job["audio_path"])
+    return redirect(url_for(".tts_audio_static", filename=filename))
+
+
+@app.route("/audio/<filename>")
+def tts_audio_static(filename):
+    """Fallback for /audio/<filename> when not behind Nginx (local dev).
+    
+    In production, Nginx serves this path directly as a static file.
+    This route exists only for local development without Nginx.
+    """
+    audio_dir = os.path.join(app.instance_path, "audio")
+    filepath = os.path.join(audio_dir, filename)
+    
+    if not os.path.exists(filepath):
+        return "Audio file not found", 404
+    
     return send_file(
-        job["audio_path"],
+        filepath,
         as_attachment=True,
-        download_name=f"voice_{job_id}.mp3",
+        download_name=filename,
         mimetype="audio/mpeg"
     )
 
