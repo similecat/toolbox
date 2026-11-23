@@ -1,420 +1,273 @@
 # Web Toolbox
-A collection of useful web tools built with Python Flask.
+
+A collection of useful web tools built with Python Flask, secured with **HTTPS transport encryption**, **email allow-listed user authentication**, and **shared REST API key access**.
 
 ## Features
-- **HTTPS Encryption**: Served over TLS (self-signed certificate supported out of the box; HTTP automatically redirects to HTTPS in Nginx)
-- **Authentication & Email Allow-List**: Web UI requires login; only allow-listed email addresses (default: `bo.yang@hotmail.com`, configurable by Admin at `/admin`) can register or modify passwords
-- **Shared REST API Key**: All REST API services authenticate with a shared default API key (`tbx-default-api-key-2026`, configurable via `TOOLBOX_API_KEY` or Admin UI) via `X-API-Key` or `Authorization: Bearer <key>`
-- **GitHub Repo Downloader**: Download any GitHub repository as a ZIP file (Web UI & `/api/github/download`)
-- **Text to Voice**: Submit text for voice generation with job-based processing (Web UI & `/api/tts/...`)
+- **HTTPS Encryption**: All web traffic and API payloads are encrypted over TLS (`TLSv1.2` / `TLSv1.3`). Self-signed certificates are generated automatically out of the box, and Nginx redirects all HTTP (`:80`) requests to HTTPS (`:443`).
+- **Web Login & Email Allow-List**: Accessing any Toolbox webpage requires signing in. Only email addresses on the allow list (default: `bo.yang@hotmail.com`) can register an account or modify their password.
+- **Admin Configuration (`/admin`)**: Admins can add/remove allow-listed email addresses, manage registered user roles/accounts, and view or rotate the shared REST API key.
+- **Shared REST API Key**: External scripts and workers authenticate across **every** REST API service (`/api/tts/*` and `/api/github/download`) using a single shared default API key (`tbx-default-api-key-2026`, overridable via `TOOLBOX_API_KEY` or `/admin`).
+- **GitHub Repo Downloader**: Download any public or private GitHub repository as a ZIP archive (Web UI & REST API).
+- **Text to Voice**: Submit English or Chinese text for asynchronous VibeVoice speech synthesis and download completed audio files.
 
-## Quick Start
+---
+
+## Security & Authentication Architecture
+
+### 1. HTTPS Transport Encryption
+- **Production (Nginx + Gunicorn)**:
+  - `setup_nginx.sh` generates a 2048-bit RSA self-signed X.509 certificate (`/etc/nginx/ssl/toolbox.crt` and `/etc/nginx/ssl/toolbox.key`, valid for 10 years with Subject Alternative Names for the server domain and `localhost`).
+  - Nginx listens on port `80` solely to issue a `301 Moved Permanently` redirect to `https://$host$request_uri`, ensuring web content and credentials are never transferred in plaintext.
+  - Nginx terminates TLS (`TLSv1.2` / `TLSv1.3`) on port `443` and proxies requests over a local Unix domain socket (`/run/gunicorn/toolbox.sock`) to Gunicorn, passing `X-Forwarded-Proto: https` (handled by Werkzeug `ProxyFix` in `app.py`).
+  - Audio file downloads use Nginx `internal` locations (`/internal-audio/`) with `X-Accel-Redirect`, so Nginx streams large files directly from disk **only after** Flask verifies the user's session or API key.
+- **Standalone / Local Development (`run.py` / `app.py`)**:
+  - `ssl_utils.ensure_self_signed_cert()` automatically generates `instance/ssl/cert.pem` and `instance/ssl/key.pem` (using `cryptography` or `openssl`) if not already present, serving HTTPS directly from Flask.
+
+### 2. Registration, Email Allow-List & Password Management
+- **Database Tables (`data/toolbox.db` via `db.py`)**:
+  - `allowed_emails`: Stores normalized lowercase email addresses permitted to register or change passwords. Seeded automatically on first initialization with **`bo.yang@hotmail.com`**.
+  - `users`: Stores `id`, `email`, `password_hash` (hashed with Werkzeug's salted key-derivation `generate_password_hash`), `is_admin`, `created_at`, and `updated_at`.
+  - `settings`: Persists global settings including the Flask `secret_key` and shared `api_key` across server restarts and redeployments.
+- **Registration (`GET/POST /register`)**:
+  - Normalizes the submitted email and checks `db.is_email_allowed(email)`. Non-allow-listed emails are rejected with `403 Forbidden`.
+  - Enforces a minimum 8-character password and stores only the salted password hash.
+  - When `bo.yang@hotmail.com` (or the first user when no admin exists) registers, `is_admin = 1` is granted automatically.
+- **Modify Password (`GET/POST /change-password`)**:
+  - Accessible both from the sign-in screen and while logged in.
+  - Verifies **both** that the email is currently in `allowed_emails` (`403` if removed by an admin) **and** that `current_password` matches the stored hash (`401` if invalid) before updating `password_hash` and `updated_at`.
+- **Admin Dashboard (`/admin`)**:
+  - Restricted strictly to logged-in users with `is_admin == 1` (protected by CSRF tokens on all state-changing forms).
+  - Allows admins to add/remove allow-listed emails, promote/revoke admin roles or delete user accounts, and view/update the shared REST API key.
+
+### 3. How Web Login Works & How Login State Is Preserved Across Requests
+
+```text
+Browser                                     Nginx (HTTPS :443) & Flask (app.py)
+  │                                                        │
+  ├── 1. GET /text-to-voice (no cookie) ──────────────────►│ @app.before_request: no session
+  │◄─ 302 Redirect -> /login?next=/text-to-voice ──────────┤
+  │                                                        │
+  ├── 2. POST /login (email + password over TLS) ─────────►│ Verify check_password_hash() against SQLite `users`
+  │                                                        │ Create session = { user_id, pwd_updated_at }
+  │                                                        │ Sign payload with persistent HMAC `secret_key`
+  │◄─ 302 Redirect -> /text-to-voice ──────────────────────┤
+  │   Set-Cookie: session=<signed_token>;                  │
+  │               Secure; HttpOnly; SameSite=Lax;          │
+  │               Max-Age=604800 (7 days)                  │
+  │                                                        │
+  ├── 3. GET /text-to-voice ──────────────────────────────►│ @app.before_request -> enforce_authentication():
+  │   Cookie: session=<signed_token>                       │  a) Verify HMAC signature & 7-day expiration
+  │                                                        │  b) Query SQLite `users` by `session["user_id"]`
+  │                                                        │  c) Check `session["pwd_updated_at"] == user["updated_at"]`
+  │◄─ 200 OK (rendered HTML, g.current_user populated) ────┤
+  │                                                        │
+  ├── 4. fetch('/api/tts/jobs') (same-origin JS) ─────────►│ Browser automatically attaches `Cookie: session=...`
+  │   Cookie: session=<signed_token>                       │ Validated via `g.current_user` (no API key needed in JS)
+  │◄─ 200 OK {"jobs": [...]} ──────────────────────────────┤
+```
+
+Step-by-step lifecycle of login state:
+
+1. **Authentication (`POST /login` or `POST /register`)**:
+   - Once credentials are verified, Flask clears any prior session state (`session.clear()`), marks the session permanent (`session.permanent = True`), and writes two fields into Flask's session dictionary:
+     - `session["user_id"]`: The integer primary key of the authenticated user in `users`.
+     - `session["pwd_updated_at"]`: The exact `updated_at` timestamp of the user record when the password was set.
+2. **Cryptographic Signing & Cookie Storage (`Set-Cookie`)**:
+   - Flask serializes and signs the session dictionary using `itsdangerous` HMAC signing with a 256-bit `secret_key` persisted in SQLite `settings` (or `TOOLBOX_SECRET_KEY` environment variable). Because `secret_key` is stored in `data/toolbox.db`, active user logins remain valid across Gunicorn restarts and `redeploy.sh` runs.
+   - The signed token is returned to the browser in `Set-Cookie: session=...` with hardened cookie attributes:
+     - **`Secure`**: The browser only sends the cookie over encrypted HTTPS connections (never over plain HTTP).
+     - **`HttpOnly`**: JavaScript (`document.cookie`) cannot read the cookie, protecting session tokens against XSS.
+     - **`SameSite=Lax`**: Protects against cross-site request forgery (CSRF) on cross-origin requests; admin actions additionally verify a per-session `csrf_token`.
+     - **7-Day Lifetime**: Configured via `PERMANENT_SESSION_LIFETIME = timedelta(days=7)`.
+3. **Automatic Reuse on Subsequent HTTP(S) Requests**:
+   - The browser stores the `session` cookie and automatically includes `Cookie: session=<signed_token>` on every subsequent HTTPS request to the Toolbox origin—including page navigations (`GET /`, `/github-downloader`, `/text-to-voice`, `/admin`), form submissions (`POST /tts/submit`, `POST /download-repo`), file downloads (`GET /tts/download/<job_id>`), and in-page AJAX calls (`fetch('/api/tts/jobs')`).
+4. **Default-Deny Per-Request Validation (`@app.before_request`)**:
+   - On **every** incoming request, `enforce_authentication()` runs before the route handler:
+     1. **Signature & Expiry Check**: Flask verifies the cookie's HMAC signature and `Max-Age`. Tampered or expired cookies are discarded immediately.
+     2. **Live Database Lookup (`get_current_user()`)**: Flask looks up `session["user_id"]` in SQLite `users` and verifies `session["pwd_updated_at"] == user["updated_at"]`.
+        - If an admin deletes a user account, the lookup returns `None` and the session is invalidated immediately on the very next request.
+        - If the user modifies their password, `user["updated_at"]` changes—automatically invalidating any sessions on other browsers/devices while updating `pwd_updated_at` on the current session.
+     3. **Access Control**: Unauthenticated requests to any non-public webpage are redirected (`302`) to `/login?next=<requested_path>`, returning the user to their original destination after signing in.
+5. **Logout (`GET/POST /logout`)**:
+   - Clears the session (`session.clear()`), instructing the browser to drop the cookie, and redirects to `/login`.
+
+### 4. REST API Authentication (Shared Default API Key)
+- All service REST APIs (`/api/tts/*` and `/api/github/download`) accept **either** an authenticated browser login session (for in-page UI calls) **or** the shared REST API key (for CLI scripts, workers, and integrations).
+- **Default API Key**: `tbx-default-api-key-2026` (can be overridden at initial setup via `TOOLBOX_API_KEY` environment variable or rotated anytime in `/admin`).
+- **Passing the API Key** (validated in constant time via `hmac.compare_digest`):
+  - Header (recommended): `X-API-Key: tbx-default-api-key-2026`
+  - Bearer header: `Authorization: Bearer tbx-default-api-key-2026`
+  - Query parameter: `?api_key=tbx-default-api-key-2026`
+- Missing or invalid keys receive `401 Unauthorized` JSON responses.
+
+---
+
+## Quick Start (Local HTTPS)
 
 ```bash
 # Clone the repository
-git clone git@github.com:similecat/toolbox.git
+git clone https://github.com/similecat/toolbox.git
 cd toolbox
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Start the auto-restart monitor (recommended for production)
-python auto_restart.py
-
-# Or start manually (Windows)
-python run.py
-# or
-waitress-serve --host=0.0.0.0 --port=80 run:app
-
-# Or start manually (Linux / WSL)
-gunicorn -w 1 -k gevent --bind 127.0.0.1:5000 app:app
-```
-
-Open your browser and navigate to `http://localhost`
-
-> **Note:** Port 80 is a privileged port. On Windows, you must **run Python as Administrator** to bind to it. The default port is `5000`.
-
-## Auto-Restart Monitor
-
-The `auto_restart.py` script is a cross-platform daemon that keeps the app running and automatically updates it daily.
-
-### Features
-- **Daily Auto-Update**: At 2:00 AM every day, stops the app, pulls latest code from `prod` branch, and restarts
-- **Cross-Platform**: Works on both Windows and Linux
-- **Auto-Recovery**: Starts the app on launch if not already running
-- **Graceful Shutdown**: Press `Ctrl+C` to stop cleanly
-
-### Usage
-
-```bash
-# Start the monitor
-python auto_restart.py
-
-# The script will:
-# 1. Start the Flask app if not running
-# 2. Monitor and wait until 2:00 AM
-# 3. Stop app → git pull → restart app
-# 4. Repeat daily
-```
-
-### Configuration
-
-Edit these variables at the top of `auto_restart.py`:
-
-| Variable | Default | Description |
-|---|---|---|
-| `RESTART_HOUR` | `2` | Hour to perform daily restart (24h format) |
-| `RESTART_MINUTE` | `0` | Minute to perform daily restart |
-| `CHECK_INTERVAL` | `60` | Seconds between status checks |
-| `BRANCH` | `"prod"` | Git branch to pull from |
-
-## Setup
-
-### Full Setup
-
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-2. Install VibeVoice (for Text-to-Voice feature):
-```bash
-cd VibeVoice
-pip install -e .
-```
-
-3. Run the application (choose one method):
-
-**Option A — Auto-restart monitor (recommended):**
-```bash
-python auto_restart.py
-```
-
-**Option B — Manual start (Windows):**
-```bash
+# Start HTTPS server on port 5000 (auto-generates self-signed cert in instance/ssl/)
 python run.py
 ```
 
-**Option B2 — Manual start (Windows, waitress CLI):**
-```bash
-waitress-serve --host=127.0.0.1 --port=8000 run:app
-```
+Open `https://localhost:5000` in your browser (accept the self-signed certificate warning in the browser), click **Create Account** (`/register`), and register with an allow-listed email (default: `bo.yang@hotmail.com`).
 
-**Option C — Manual start (Linux / WSL with Gunicorn):**
-```bash
-gunicorn -w 1 -k gevent --bind 0.0.0.0:5000 app:app
-```
+---
 
-> **Note:** Gunicorn requires Unix/Linux (it uses `fcntl`). On Windows, use `python run.py` or `waitress-serve`, both of which use waitress, a cross-platform WSGI server.
-
-4. Open your browser and navigate to `http://localhost`
-
-## Production Deployment (Ubuntu / Linux)
-
-For production use on Ubuntu/Debian, the recommended setup is **Nginx** as a reverse proxy on port 80, with **Gunicorn** serving the Flask app via a Unix socket.
+## Production Deployment (Ubuntu / Linux with Nginx HTTPS + Gunicorn)
 
 ### Quick Setup Script
 
-A one-command setup script is provided:
-
 ```bash
-# Clone the repo, deploy to /opt/toolbox, and configure nginx + gunicorn
+# Pull from prod branch, generate self-signed TLS cert, and configure Nginx HTTPS + Gunicorn
 sudo bash setup_nginx.sh
+
+# Or deploy directly from the local directory without pulling from GitHub
+sudo bash setup_nginx.sh --local
 ```
 
 The script will:
-1. Pull latest code to a temp directory and sync to `/opt/toolbox` (from `prod` branch)
-2. Install nginx
-3. Install Python dependencies
-4. Create a `systemd` service for gunicorn (with gevent workers)
-5. Configure nginx to proxy port 80 to gunicorn via a Unix socket
-6. Enable and start both services
+1. Sync application code to `/opt/toolbox` (preserving `instance/` and `data/`)
+2. Install `nginx`, `openssl`, and Python dependencies
+3. Create the `toolbox` systemd service running Gunicorn (`gevent` worker) on `/run/gunicorn/toolbox.sock`
+4. Generate a self-signed TLS certificate at `/etc/nginx/ssl/toolbox.crt` (if not already present)
+5. Configure Nginx to redirect port `80` → `443` and serve HTTPS on port `443`
+6. Enable and start both `toolbox` and `nginx`
 
-> **Note:** The app directory `/opt/toolbox` is **not** a git repo. Files are synced via `rsync`, preserving runtime data in `instance/` and `data/`.
-
-### Manual Setup
-
-If you prefer to set things up manually:
+### Redeploying Updates
 
 ```bash
-# 1. Install nginx
-sudo apt update && sudo apt install -y nginx
+# Pull latest prod branch and restart Gunicorn (preserves users, allow-list, settings, and jobs in data/)
+sudo bash redeploy.sh
 
-# 2. Install Python dependencies
-pip3 install -r requirements.txt
-
-# 3. Start gunicorn (Unix socket recommended for production)
-sudo gunicorn -w 2 -k gevent \
-    --bind unix:/run/gunicorn/toolbox.sock \
-    --access-logfile - --error-logfile - \
-    app:app
-```
-
-Then configure nginx (`/etc/nginx/sites-available/toolbox`):
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location / {
-        proxy_pass http://unix:/run/gunicorn/toolbox.sock;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;
-    }
-}
-```
-
-Enable the site and restart nginx:
-
-```bash
-sudo ln -s /etc/nginx/sites-available/toolbox /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
+# Or sync from local directory
+sudo bash redeploy.sh --local
 ```
 
 ### Managing Services
 
 | Command | Description |
 |---|---|
-| `sudo systemctl status toolbox` | Check gunicorn status |
-| `sudo systemctl restart toolbox` | Restart gunicorn |
-| `sudo systemctl status nginx` | Check nginx status |
-| `journalctl -u toolbox` | View gunicorn logs |
-| `/var/log/nginx/` | Nginx access/error logs |
+| `sudo systemctl status toolbox` | Check Gunicorn service status |
+| `sudo systemctl restart toolbox` | Restart Gunicorn |
+| `sudo systemctl status nginx` | Check Nginx status |
+| `journalctl -u toolbox` | View Gunicorn logs |
+| `/var/log/nginx/` | Nginx access and error logs |
 
-### Redeploying
-
-To update the app with the latest code (pulls from `prod` and reinstalls dependencies):
-
-```bash
-sudo bash redeploy.sh
-```
-
-This pulls the latest changes, syncs them via `rsync` (preserving `instance/` and `data/`), reinstalls Python dependencies, and restarts gunicorn automatically.
-
-> **Tip:** After deployment, the TTS worker should point to the correct base URL:
-> ```bash
-> cd VibeVoice/demo && python tts_worker.py --base_url http://localhost
-> ```
-
-## Tools
-
-### GitHub Repo Downloader
-- Enter a GitHub repository URL
-- Download the entire repository as a ZIP file
-- Supports both public and private repositories (with token)
-
-### Text to Voice
-- Submit text in English or Chinese for voice generation
-- Jobs are processed asynchronously by vibevoice
-- Download audio files when processing is complete
-- Maximum 5000 characters per submission
+---
 
 ## Running the TTS Worker
 
-The TTS worker is a background service that polls for pending jobs and generates audio using the VibeVoice model.
+The TTS worker polls `/api/tts/jobs?status=pending` over HTTPS using the shared API key, synthesizes audio with VibeVoice, and uploads the resulting audio file.
 
-### Prerequisites
-
-1. Ensure the VibeVoice model is downloaded locally at `VibeVoice/models/VibeVoice-1.5b` (or it will be fetched from HuggingFace automatically).
-2. Install Python dependencies in the VibeVoice directory:
-   ```bash
-   cd VibeVoice
-   pip install -e .
-   ```
-
-### Starting the Worker
-
-**Terminal 1** — Start the web application (or use auto_restart.py):
-
-**Windows:**
 ```bash
-python run.py
-```
-or
-```bash
-waitress-serve --host=127.0.0.1 --port=8000 run:app
-```
+cd VibeVoice
+pip install -e .
+cd demo
 
-**Linux / WSL:**
-```bash
-gunicorn -w 1 -k gevent --bind 0.0.0.0:5000 app:app
-```
+# Connect to local HTTPS server
+python tts_worker.py --base_url https://localhost:5000
 
-> **Tip:** For production use, replace the above with `python auto_restart.py` to get automatic daily updates at 2 AM.
-
-**Terminal 2** — Start the TTS worker:
-```bash
-cd VibeVoice/demo
-python tts_worker.py
+# Connect to remote HTTPS deployment
+python tts_worker.py --base_url https://byang.japaneast.cloudapp.azure.com --api_key tbx-default-api-key-2026
 ```
 
 ### Worker Command-Line Options
 
 | Option | Default | Description |
 |---|---|---|
-| `--base_url` | `http://localhost` | Base URL of the toolbox API |
-| `--model_path` | Auto-detect | Path to VibeVoice model (auto-detects `VibeVoice/models/VibeVoice-1.5b`) |
+| `--base_url` | `https://localhost:5000` | Base HTTPS URL of the Toolbox server |
+| `--api_key` | `TOOLBOX_API_KEY` or `tbx-default-api-key-2026` | Shared REST API key |
+| `--verify_ssl` | `False` | Enable strict CA verification (off by default for self-signed certs) |
+| `--model_path` | Auto-detect | Path to VibeVoice model |
 | `--device` | Auto-detect | Device for inference: `cuda`, `mps`, `cpu` |
 | `--interval` | `5` | Polling interval in seconds |
+| `--idle_timeout` | `60` | Seconds of idle time before unloading model from memory |
 | `--cfg_scale` | `1.3` | CFG scale for generation |
-| `--seed` | None | Random seed for reproducibility |
+| `--seed` | `None` | Random seed for reproducibility |
 
-**Example with custom options:**
+---
+
+## REST API Reference
+
+Include `X-API-Key: <api_key>` (or `Authorization: Bearer <api_key>`) on all REST API requests. When using `curl` against a self-signed certificate, pass `-k` (`--insecure`).
+
+### GitHub Repo Downloader API
+
+**POST** or **GET** `/api/github/download`
+
+Download a GitHub repository as a `.zip` archive.
+
 ```bash
-python tts_worker.py --base_url http://localhost --device cuda --interval 10
+curl -k -X POST https://byang.japaneast.cloudapp.azure.com/api/github/download \
+  -H "X-API-Key: tbx-default-api-key-2026" \
+  -H "Content-Type: application/json" \
+  -d '{"github_url": "https://github.com/octocat/Hello-World"}' \
+  -o Hello-World.zip
 ```
 
-### Speaker Configuration
+### Text-to-Voice APIs
 
-The worker uses the following default speakers:
-- **English (`en`)**: Alice
-- **Chinese (`zh`)**: Xinran
-
-You can modify the speaker mapping in `VibeVoice/demo/tts_worker.py` under `SPEAKER_MAP`.
-
-### How It Works
-
-1. Worker polls `/api/tts/jobs?status=pending` every N seconds
-2. Picks up the oldest pending job (FIFO order)
-3. Marks the job as `processing`
-4. Generates audio using VibeVoice model
-5. Uploads the audio result back to the toolbox
-6. Job status changes to `completed` and the user can download the audio
-
-Press `Ctrl+C` to stop the worker gracefully.
-
-## VibeVoice API Reference
-
-The Text-to-Voice tool provides REST APIs for vibevoice to process jobs.
-
-### Submit a Job (User-facing)
-
+#### Submit a Job
 **POST** `/api/tts/submit`
-
-Submit a new text-to-voice job.
-
-**Request Body** (JSON or form data):
-```json
-{
-  "text": "Hello, this is a test.",
-  "language": "en"
-}
+```bash
+curl -k -X POST https://byang.japaneast.cloudapp.azure.com/api/tts/submit \
+  -H "X-API-Key: tbx-default-api-key-2026" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, this is a test.", "language": "en"}'
 ```
 
-**Response**:
-```json
-{
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "pending"
-}
+#### List Jobs
+**GET** `/api/tts/jobs?status=pending`
+```bash
+curl -k https://byang.japaneast.cloudapp.azure.com/api/tts/jobs \
+  -H "X-API-Key: tbx-default-api-key-2026"
 ```
 
-### List All Jobs
-
-**GET** `/api/tts/jobs`
-
-List all text-to-voice jobs.
-
-**Query Parameters**:
-- `status` (optional): Filter by status (`pending`, `processing`, `completed`, `failed`)
-
-**Response**:
-```json
-{
-  "jobs": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
-      "text": "Hello...",
-      "language": "en",
-      "status": "pending",
-      "created_at": "2026-05-29T21:00:00",
-      "updated_at": "2026-05-29T21:00:00"
-    }
-  ]
-}
-```
-
-### Get Job Details
-
+#### Get Job Details
 **GET** `/api/tts/job/<job_id>`
 
-Get full details of a specific job including the complete text.
+#### Update Job Status
+**POST** `/api/tts/job/<job_id>/status` — JSON body: `{"status": "processing", "error": null}`
 
-**Response**:
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "text": "Hello, this is a full test.",
-  "language": "en",
-  "status": "pending",
-  "created_at": "2026-05-29T21:00:00",
-  "updated_at": "2026-05-29T21:00:00",
-  "error": null
-}
+#### Upload Audio Result
+**POST** `/api/tts/job/<job_id>/result` — Multipart form data with `audio` file field (or `error` field).
+
+#### Download Completed Audio
+**GET** `/api/tts/job/<job_id>/download` (or `/tts/download/<job_id>`)
+```bash
+curl -k -L https://byang.japaneast.cloudapp.azure.com/api/tts/job/<job_id>/download \
+  -H "X-API-Key: tbx-default-api-key-2026" \
+  -o output.wav
 ```
 
-### Update Job Status
+#### Retry / Delete a Job
+- **POST** `/api/tts/job/<job_id>/retry`
+- **DELETE** `/api/tts/job/<job_id>`
 
-**POST** `/api/tts/job/<job_id>/status`
+### Admin Allow-List API (Requires Admin Web Session)
+- **GET** `/api/admin/allowlist` — List allow-listed emails and registration status
+- **POST** `/api/admin/allowlist` — Add email (`{"email": "user@example.com"}`)
+- **DELETE** `/api/admin/allowlist` — Remove email (`{"email": "user@example.com"}`)
 
-Update the status of a job (e.g., mark as processing).
+---
 
-**Request Body**:
-```json
-{
-  "status": "processing",
-  "error": null
-}
+## Auto-Restart Monitor
+
+The `auto_restart.py` daemon monitors the standalone app and pulls updates daily at 2:00 AM from `prod`:
+
+```bash
+python auto_restart.py
 ```
 
-**Response**:
-```json
-{
-  "status": "processing",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000"
-}
+## Running Tests
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
-
-### Upload Audio Result
-
-**POST** `/api/tts/job/<job_id>/result`
-
-Upload the generated audio file for a job.
-
-**Request** (multipart form data):
-- `audio`: The audio file (MP3, WAV, etc.)
-- `error` (optional): Error message if processing failed
-
-**Response**:
-```json
-{
-  "status": "completed",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-### Download Audio (User-facing)
-
-**GET** `/tts/download/<job_id>`
-
-Download the audio file for a completed job.
-
-## Job Workflow
-
-1. **User** submits text via the web UI → Job created with `pending` status
-2. **vibevoice** polls `/api/tts/jobs?status=pending` to find new jobs
-3. **vibevoice** gets job details via `/api/tts/job/<job_id>`
-4. **vibevoice** updates status to `processing` via `/api/tts/job/<job_id>/status`
-5. **vibevoice** generates audio and uploads via `/api/tts/job/<job_id>/result`
-6. **User** sees `completed` status and downloads audio via `/tts/download/<job_id>`
-
-### Job Statuses
-- `pending`: Job submitted, waiting for processing
-- `processing`: vibevoice is generating audio
-- `completed`: Audio generated and ready for download
-- `failed`: Processing failed with error

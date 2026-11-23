@@ -1,10 +1,27 @@
 # Tests
 
-Performance and load testing utilities for the TTS service.
+Unit, security, and performance testing utilities for Web Toolbox.
+
+## Unit & Security Integration Tests
+
+`test_auth_and_https.py` verifies:
+- Self-signed TLS certificate generation and live HTTPS encrypted request/response transfer
+- Unauthenticated webpage redirect (`302`) to `/login`
+- Default email allow-list seeding (`bo.yang@hotmail.com`) and automatic Admin assignment
+- Allow-list enforcement (`403`) on `/register` and `/change-password`
+- Admin allow-list management (`/admin/allowlist/add`, `/admin/allowlist/remove`, `/api/admin/allowlist`) and non-admin `403` protection
+- Session cookie persistence, password modification invalidation, and `X-Accel-Redirect` audio protection
+- Shared REST API key (`X-API-Key` and `Authorization: Bearer`) across both TTS (`/api/tts/*`) and GitHub Downloader (`/api/github/download`) services
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+---
 
 ## Performance Test
 
-`perf_test.py` measures QPS (Queries Per Second) and latency for key API endpoints.
+`perf_test.py` measures QPS (Queries Per Second) and latency percentiles for the HTTPS REST API endpoints using the shared API key.
 
 ### Usage
 
@@ -14,49 +31,22 @@ python tests/perf_test.py --host <hostname>
 
 ### Arguments
 
-| Flag            | Default  | Description                              |
-|-----------------|----------|------------------------------------------|
-| `--host`        | *required* | Hostname or IP of the service            |
-| `--port`        | `80`     | Port of the service                      |
-| `--concurrency` | `20`     | Number of concurrent worker threads      |
-| `--duration`    | `15`     | Test duration in seconds per endpoint    |
-| `--rps`         | `100`    | Target requests per second per worker    |
+| Flag            | Default  | Description                                              |
+|-----------------|----------|----------------------------------------------------------|
+| `--host`        | *required* | Hostname or IP of the service                          |
+| `--port`        | `443`    | Port of the service                                      |
+| `--scheme`      | `https`  | Protocol scheme (`https` or `http`)                      |
+| `--api-key`     | `TOOLBOX_API_KEY` or `tbx-default-api-key-2026` | Shared REST API key |
+| `--concurrency` | `20`     | Number of concurrent worker threads                      |
+| `--duration`    | `15`     | Test duration in seconds per endpoint                    |
+| `--rps`         | `100`    | Target requests per second per worker                    |
 
 ### Examples
 
 ```bash
-# Quick test against localhost
-python tests/perf_test.py --host localhost
+# Quick test against local HTTPS server on port 5000
+python tests/perf_test.py --host localhost --port 5000
 
-# Heavy load test on a remote server
-python tests/perf_test.py --host myserver.example.com --concurrency 50 --duration 30 --rps 200
+# Load test on a remote HTTPS server
+python tests/perf_test.py --host byang.japaneast.cloudapp.azure.com --concurrency 20 --duration 15
 ```
-
-### Tested Endpoints
-
-| Method | Path                                | Description               |
-|--------|-------------------------------------|---------------------------|
-| `GET`  | `/`                                 | Home page                 |
-| `GET`  | `/text-to-voice`                    | TTS tool page             |
-| `GET`  | `/github-downloader`                | GitHub downloader page    |
-| `GET`  | `/api/tts/jobs`                     | List all jobs             |
-| `POST` | `/api/tts/submit`                   | Submit a TTS job          |
-| `GET`  | `/api/tts/jobs?status=pending`      | List pending jobs         |
-
-### Report
-
-After each run, a summary report is printed including:
-
-- **Per-endpoint**: total requests, success/fail counts, success rate, QPS, and latency percentiles (min, avg, p50, p95, p99, max).
-- **Overall**: aggregate request count and total QPS across all endpoints.
-
-The script exits with code `1` if any endpoint has a success rate below 50%.
-
-### Automatic Cleanup
-
-Jobs created by `POST /api/tts/submit` during the test are automatically deleted using the `DELETE /api/tts/job/<job_id>` endpoint after the test completes, so no noisy workloads are left behind.
-
-### Requirements
-
-- Python 3.7+
-- `requests` (already listed in project `requirements.txt`)
