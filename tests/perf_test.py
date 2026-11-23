@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+import os
 import time
 import statistics
 import sys
@@ -16,6 +17,10 @@ from dataclasses import dataclass, field
 from typing import List
 
 import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+DEFAULT_API_KEY = "tbx-default-api-key-2026"
 
 
 @dataclass
@@ -110,7 +115,7 @@ def make_request(session: requests.Session, method: str, url: str,
     """Execute a single HTTP request and return (RequestResult, response_body)."""
     start = time.monotonic()
     try:
-        resp = session.request(method, url, json=json_body, headers=headers, timeout=30)
+        resp = session.request(method, url, json=json_body, headers=headers, timeout=30, verify=False)
         elapsed = time.monotonic() - start
         result = RequestResult(success=200 <= resp.status_code < 400,
                               status_code=resp.status_code, elapsed=elapsed)
@@ -187,8 +192,16 @@ def main():
         help="Hostname or IP of the service (e.g., localhost, myserver.com)"
     )
     parser.add_argument(
-        "--port", type=int, default=80,
-        help="Port of the service (default: 80)"
+        "--port", type=int, default=443,
+        help="Port of the service (default: 443)"
+    )
+    parser.add_argument(
+        "--scheme", type=str, default="https", choices=["http", "https"],
+        help="Protocol scheme (default: https)"
+    )
+    parser.add_argument(
+        "--api-key", type=str, default=os.environ.get("TOOLBOX_API_KEY", DEFAULT_API_KEY),
+        help="Shared REST API key (default: TOOLBOX_API_KEY env or default key)"
     )
     parser.add_argument(
         "--concurrency", type=int, default=20,
@@ -205,8 +218,9 @@ def main():
 
     args = parser.parse_args()
 
-    base_url = f"http://{args.host}:{args.port}"
+    base_url = f"{args.scheme}://{args.host}:{args.port}"
     requests_per_worker = args.rps * args.duration
+    api_headers = {"X-API-Key": args.api_key} if args.api_key else {}
 
     print(f"Target       : {base_url}")
     print(f"Concurrency  : {args.concurrency}")
@@ -217,49 +231,27 @@ def main():
 
     # Define endpoints to test
     endpoints = [
-        # --- Web Pages ---
-        {
-            "name": "GET / (Home Page)",
-            "method": "GET",
-            "path": "/",
-            "json_body": None,
-            "headers": {"Accept": "text/html"},
-        },
-        {
-            "name": "GET /text-to-voice (TTS Page)",
-            "method": "GET",
-            "path": "/text-to-voice",
-            "json_body": None,
-            "headers": {"Accept": "text/html"},
-        },
-        {
-            "name": "GET /github-downloader (Downloader Page)",
-            "method": "GET",
-            "path": "/github-downloader",
-            "json_body": None,
-            "headers": {"Accept": "text/html"},
-        },
         # --- API Endpoints ---
         {
             "name": "GET /api/tts/jobs",
             "method": "GET",
             "path": "/api/tts/jobs",
             "json_body": None,
-            "headers": {"Accept": "application/json"},
+            "headers": {**api_headers, "Accept": "application/json"},
         },
         {
             "name": "POST /api/tts/submit",
             "method": "POST",
             "path": "/api/tts/submit",
             "json_body": {"text": "Hello, this is a performance test.", "language": "en"},
-            "headers": {"Content-Type": "application/json", "Accept": "application/json"},
+            "headers": {**api_headers, "Content-Type": "application/json", "Accept": "application/json"},
         },
         {
             "name": "GET /api/tts/jobs?status=pending",
             "method": "GET",
             "path": "/api/tts/jobs?status=pending",
             "json_body": None,
-            "headers": {"Accept": "application/json"},
+            "headers": {**api_headers, "Accept": "application/json"},
         },
     ]
 
@@ -324,7 +316,7 @@ def main():
         for job_id in collected_job_ids:
             try:
                 resp = session.request("DELETE", f"{base_url}/api/tts/job/{job_id}",
-                                      timeout=10)
+                                      headers=api_headers, verify=False, timeout=10)
                 if 200 <= resp.status_code < 400:
                     deleted += 1
             except Exception:

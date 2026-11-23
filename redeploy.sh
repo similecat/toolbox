@@ -1,19 +1,10 @@
 #!/bin/bash
 # ============================================================
-# Redeploy Web Toolbox — pull latest code and restart gunicorn
+# Redeploy Web Toolbox — update code, ensure HTTPS, restart services
 # ============================================================
 # Run as root or with sudo:
-#   sudo bash redeploy.sh
-#
-# This script will:
-#   1. Pull latest code from the prod branch
-#   2. Sync files to /opt/toolbox (preserving runtime data)
-#   3. Reinstall Python dependencies
-#   4. Restart the gunicorn service
-#
-# Assumes:
-#   - App is already deployed at /opt/toolbox
-#   - Gunicorn systemd service is configured
+#   sudo bash redeploy.sh           # pulls latest code from prod branch
+#   sudo bash redeploy.sh --local   # syncs from script directory
 # ============================================================
 
 set -euo pipefail
@@ -23,6 +14,14 @@ APP_NAME="toolbox"
 APP_DIR="/opt/toolbox"
 GIT_REPO="https://github.com/similecat/toolbox.git"
 GIT_BRANCH="prod"
+USER="www-data"
+
+LOCAL_DEPLOY=0
+if [[ "${1:-}" == "--local" ]]; then
+    LOCAL_DEPLOY=1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -34,46 +33,55 @@ info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
-# --- Check root ---
 if [[ $EUID -ne 0 ]]; then
     error "This script must be run as root (use sudo)"
 fi
 
-# --- Check app directory ---
 if [[ ! -d "${APP_DIR}" ]]; then
     error "App directory ${APP_DIR} does not exist. Run setup_nginx.sh first."
 fi
 
 info "Redeploying ${APP_NAME}..."
 
-# --- Pull latest code to temp dir ---
-TEMP_DIR=$(mktemp -d /tmp/toolbox_deploy_XXXXXX)
-info "Pulling latest code..."
+if [[ "${LOCAL_DEPLOY}" -eq 1 ]]; then
+    if [[ "${SCRIPT_DIR}" != "${APP_DIR}" ]]; then
+        info "Syncing local files from ${SCRIPT_DIR}..."
+        rsync -av --delete \
+            --exclude='instance/' \
+            --exclude='data/' \
+            --exclude='.git/' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            "${SCRIPT_DIR}/" "${APP_DIR}/"
+    fi
+else
+    TEMP_DIR=$(mktemp -d /tmp/toolbox_deploy_XXXXXX)
+    info "Pulling latest code..."
 
-cd "${TEMP_DIR}"
-git init -q
-git remote add origin "${GIT_REPO}"
-git fetch origin "${GIT_BRANCH}" -q
-git checkout -b "${GIT_BRANCH}" "origin/${GIT_BRANCH}" -q
+    cd "${TEMP_DIR}"
+    git init -q
+    git remote add origin "${GIT_REPO}"
+    git fetch origin "${GIT_BRANCH}" -q
+    git checkout -b "${GIT_BRANCH}" "origin/${GIT_BRANCH}" -q
 
-# --- Sync files to APP_DIR ---
-rsync -av --delete \
-    --exclude='instance/' \
-    --exclude='data/' \
-    --exclude='__pycache__/' \
-    --exclude='*.pyc' \
-    "${TEMP_DIR}/" "${APP_DIR}/"
+    rsync -av --delete \
+        --exclude='instance/' \
+        --exclude='data/' \
+        --exclude='__pycache__/' \
+        --exclude='*.pyc' \
+        "${TEMP_DIR}/" "${APP_DIR}/"
 
-rm -rf "${TEMP_DIR}"
+    rm -rf "${TEMP_DIR}"
+fi
+
+chown -R "${USER}:${USER}" "${APP_DIR}"
 info "Files synced"
 
-# --- Reinstall Python dependencies ---
 info "Installing Python dependencies..."
 cd "${APP_DIR}"
 python3 -m pip install -q -r requirements.txt
 info "Dependencies installed"
 
-# --- Restart gunicorn ---
 info "Restarting gunicorn service..."
 systemctl daemon-reload
 if systemctl restart "${APP_NAME}"; then
@@ -85,6 +93,10 @@ if systemctl restart "${APP_NAME}"; then
     fi
 else
     error "Failed to restart gunicorn"
+fi
+
+if systemctl is-active --quiet nginx; then
+    nginx -t > /dev/null 2>&1 && systemctl reload nginx
 fi
 
 info "Redeployment complete!"

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Settings - My Toolbox</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 30px 20px 50px;
+        }
+        .container { max-width: 850px; margin: 0 auto; }
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.16);
+            backdrop-filter: blur(8px);
+            padding: 12px 20px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            color: white;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .topbar-left a {
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 0.9rem;
+        }
+        .topbar-right a {
+            color: white;
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.18);
+            transition: background 0.2s;
+        }
+        .topbar-right a:hover { background: rgba(255,255,255,0.3); }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 24px;
+        }
+        h1 { font-size: 1.8rem; color: #333; margin-bottom: 6px; }
+        h2 {
+            font-size: 1.25rem;
+            color: #333;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+        .description { color: #666; margin-bottom: 18px; line-height: 1.5; font-size: 0.95rem; }
+        .error {
+            background: #ffe0e0; color: #d32f2f;
+            padding: 12px 15px; border-radius: 8px;
+            margin-bottom: 20px; border-left: 4px solid #d32f2f;
+        }
+        .success {
+            background: #e0ffe0; color: #2e7d32;
+            padding: 12px 15px; border-radius: 8px;
+            margin-bottom: 20px; border-left: 4px solid #2e7d32;
+        }
+        .inline-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .inline-form input[type="email"], .inline-form input[type="text"] {
+            flex: 1;
+            min-width: 220px;
+            padding: 11px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+        .inline-form input:focus { outline: none; border-color: #667eea; }
+        .btn-primary {
+            padding: 11px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-danger {
+            padding: 6px 12px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        .btn-secondary {
+            padding: 6px 12px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.92rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 11px 10px;
+            border-bottom: 1px solid #eee;
+        }
+        th { color: #555; font-weight: 600; }
+        .badge {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 12px;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+        .badge-green { background: #d4edda; color: #155724; }
+        .badge-gray { background: #e9ecef; color: #495057; }
+        .badge-purple { background: #e8e4ff; color: #4c35b5; }
+        .actions-cell { display: flex; gap: 8px; align-items: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="topbar">
+            <div class="topbar-left">
+                <a href="/">← Back to Toolbox</a>
+            </div>
+            <div class="topbar-right">
+                <span>👤 {{ current_user.email }}</span>
+                <a href="/change-password">Password</a>
+                <a href="/logout">Sign Out</a>
+            </div>
+        </div>
+
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        {% if success %}
+        <div class="success">{{ success }}</div>
+        {% endif %}
+
+        <!-- Allow-List Management -->
+        <div class="card">
+            <h1>🛡️ Admin Configuration</h1>
+            <p class="description">
+                Manage the email allow list, registered user accounts, and the shared REST API key.
+            </p>
+
+            <h2>Email Allow List</h2>
+            <p class="description">
+                Only email addresses in this allow list can register an account or modify their password.
+            </p>
+
+            <form class="inline-form" method="POST" action="/admin/allowlist/add">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="email" name="email" placeholder="user@example.com" required>
+                <button type="submit" class="btn-primary">+ Add Allowed Email</button>
+            </form>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Email Address</th>
+                        <th>Status</th>
+                        <th>Added By</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in allowed_emails %}
+                    <tr>
+                        <td>
+                            <strong>{{ item.email }}</strong>
+                            {% if item.is_admin %}
+                            <span class="badge badge-purple">Admin</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.is_registered %}
+                            <span class="badge badge-green">Registered</span>
+                            {% else %}
+                            <span class="badge badge-gray">Not Registered</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.added_by }}</td>
+                        <td>
+                            {% if item.email != current_user.email %}
+                            <form method="POST" action="/admin/allowlist/remove" onsubmit="return confirm('Remove {{ item.email }} from allow list?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="email" value="{{ item.email }}">
+                                <button type="submit" class="btn-danger">Remove</button>
+                            </form>
+                            {% else %}
+                            <span style="color:#888; font-size:0.85rem;">Current Admin</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Registered Users -->
+        <div class="card">
+            <h2>Registered Users</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td>{{ u.email }}</td>
+                        <td>
+                            {% if u.is_admin %}
+                            <span class="badge badge-purple">Admin</span>
+                            {% else %}
+                            <span class="badge badge-gray">User</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ u.created_at[:19].replace('T', ' ') }}</td>
+                        <td class="actions-cell">
+                            {% if u.id != current_user.id %}
+                            <form method="POST" action="/admin/users/toggle-admin">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <button type="submit" class="btn-secondary">
+                                    {{ 'Revoke Admin' if u.is_admin else 'Make Admin' }}
+                                </button>
+                            </form>
+                            <form method="POST" action="/admin/users/delete" onsubmit="return confirm('Delete user {{ u.email }}?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <button type="submit" class="btn-danger">Delete</button>
+                            </form>
+                            {% else %}
+                            <span style="color:#888; font-size:0.85rem;">You</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Shared REST API Key -->
+        <div class="card">
+            <h2>Shared REST API Key</h2>
+            <p class="description">
+                All Toolbox REST APIs accept this key via the <code>X-API-Key</code> or <code>Authorization: Bearer &lt;key&gt;</code> header.
+            </p>
+            <form class="inline-form" method="POST" action="/admin/api-key/update">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="text" id="apiKeyInput" name="api_key" value="{{ api_key }}" minlength="8" required>
+                <button type="button" class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('apiKeyInput').value)">Copy</button>
+                <button type="submit" class="btn-primary">Save API Key</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

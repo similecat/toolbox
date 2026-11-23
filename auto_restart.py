@@ -27,7 +27,7 @@ from pathlib import Path
 # ─── Configuration ───────────────────────────────────────────────
 REPO_DIR = Path(__file__).resolve().parent
 BRANCH = "prod"
-APP_PORT = 80
+APP_PORT = 443
 RESTART_HOUR = 2
 RESTART_MINUTE = 0
 CHECK_INTERVAL = 60  # seconds between checks

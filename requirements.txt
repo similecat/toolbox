@@ -1,6 +1,7 @@
 Flask==3.0.0
 requests==2.31.0
 gTTS==2.5.1
+cryptography
 gunicorn
 gevent
 zope.event

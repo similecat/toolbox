@@ -86,10 +86,58 @@
             font-size: 0.8rem;
             margin-top: 15px;
         }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.16);
+            backdrop-filter: blur(8px);
+            padding: 12px 20px;
+            border-radius: 12px;
+            margin-bottom: 28px;
+            color: white;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        .topbar-links {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .topbar-links a {
+            color: white;
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.18);
+            transition: background 0.2s;
+        }
+
+        .topbar-links a:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        {% if current_user %}
+        <div class="topbar">
+            <span>👤 {{ current_user.email }}</span>
+            <div class="topbar-links">
+                {% if current_user.is_admin %}
+                <a href="/admin">🛡️ Admin</a>
+                {% endif %}
+                <a href="/change-password">Password</a>
+                <a href="/logout">Sign Out</a>
+            </div>
+        </div>
+        {% endif %}
+
         <h1>🧰 My Toolbox</h1>
         <p class="subtitle">A collection of useful web tools</p>
 

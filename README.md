@@ -2,8 +2,11 @@
 A collection of useful web tools built with Python Flask.
 
 ## Features
-- **GitHub Repo Downloader**: Download any GitHub repository as a ZIP file
-- **Text to Voice**: Submit text for voice generation with job-based processing
+- **HTTPS Encryption**: Served over TLS (self-signed certificate supported out of the box; HTTP automatically redirects to HTTPS in Nginx)
+- **Authentication & Email Allow-List**: Web UI requires login; only allow-listed email addresses (default: `bo.yang@hotmail.com`, configurable by Admin at `/admin`) can register or modify passwords
+- **Shared REST API Key**: All REST API services authenticate with a shared default API key (`tbx-default-api-key-2026`, configurable via `TOOLBOX_API_KEY` or Admin UI) via `X-API-Key` or `Authorization: Bearer <key>`
+- **GitHub Repo Downloader**: Download any GitHub repository as a ZIP file (Web UI & `/api/github/download`)
+- **Text to Voice**: Submit text for voice generation with job-based processing (Web UI & `/api/tts/...`)
 
 ## Quick Start
 

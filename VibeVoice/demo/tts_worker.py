@@ -5,7 +5,7 @@ and uploads the results back.
 
 Usage:
     python tts_worker.py
-    python tts_worker.py --base_url http://localhost:5000 --interval 5
+    python tts_worker.py --base_url https://localhost:5000 --interval 5
     python tts_worker.py --model_path microsoft/VibeVoice-1.5b --device cuda
 """
 import argparse
@@ -13,6 +13,7 @@ import time
 import sys
 import os
 import requests
+import urllib3
 import datetime
 import traceback
 from typing import Optional
@@ -21,6 +22,15 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from inference_service import initialize, generate_audio, load_model, unload_model, is_model_loaded
+
+DEFAULT_API_KEY = "tbx-default-api-key-2026"
+_API_KEY = os.environ.get("TOOLBOX_API_KEY", DEFAULT_API_KEY)
+_VERIFY_SSL = False
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+def _auth_headers() -> dict:
+    return {"X-API-Key": _API_KEY} if _API_KEY else {}
 
 
 # ============================================================
@@ -42,7 +52,7 @@ def get_pending_jobs(base_url: str) -> list:
     """
     try:
         url = f"{base_url}/api/tts/jobs?status=pending"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=_auth_headers(), verify=_VERIFY_SSL, timeout=10)
         response.raise_for_status()
         data = response.json()
         return data.get("jobs", [])
@@ -63,7 +73,7 @@ def get_job_details(base_url: str, job_id: str) -> dict:
     """
     try:
         url = f"{base_url}/api/tts/job/{job_id}"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=_auth_headers(), verify=_VERIFY_SSL, timeout=10)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -86,7 +96,7 @@ def update_job_status(base_url: str, job_id: str, status: str, error: str = None
         payload = {"status": status}
         if error:
             payload["error"] = error
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, headers=_auth_headers(), verify=_VERIFY_SSL, timeout=10)
         response.raise_for_status()
         return True
     except requests.RequestException as e:
@@ -108,7 +118,7 @@ def upload_audio_result(base_url: str, job_id: str, audio_path: str) -> bool:
         url = f"{base_url}/api/tts/job/{job_id}/result"
         with open(audio_path, 'rb') as f:
             files = {"audio": (os.path.basename(audio_path), f, "audio/wav")}
-            response = requests.post(url, files=files, timeout=60)
+            response = requests.post(url, files=files, headers=_auth_headers(), verify=_VERIFY_SSL, timeout=60)
             response.raise_for_status()
         return True
     except requests.RequestException as e:
@@ -330,8 +340,19 @@ def parse_args():
     parser.add_argument(
         "--base_url",
         type=str,
-        default="http://localhost:5000",
-        help="Base URL of the toolbox API (default: http://localhost:5000)"
+        default="https://localhost:5000",
+        help="Base URL of the toolbox API (default: https://localhost:5000)"
+    )
+    parser.add_argument(
+        "--api_key",
+        type=str,
+        default=os.environ.get("TOOLBOX_API_KEY", DEFAULT_API_KEY),
+        help="Shared REST API key for Toolbox API authentication"
+    )
+    parser.add_argument(
+        "--verify_ssl",
+        action="store_true",
+        help="Verify TLS certificate (disabled by default for self-signed certs)"
     )
     parser.add_argument(
         "--model_path",
@@ -373,7 +394,10 @@ def parse_args():
 
 
 def main():
+    global _API_KEY, _VERIFY_SSL
     args = parse_args()
+    _API_KEY = args.api_key
+    _VERIFY_SSL = args.verify_ssl
 
     # Store model config for lazy loading (no model loaded at startup)
     print("=" * 60)
