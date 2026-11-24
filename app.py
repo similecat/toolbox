@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 import requests
 
 import db as job_db
+from epub_reader.blueprint import create_epub_blueprint
 from ssl_utils import ensure_self_signed_cert
 
 app = Flask(__name__)
@@ -865,6 +866,19 @@ def api_github_download():
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"Failed to download repository: {str(e)}"}), 500
+
+
+# ============================================================
+# Encrypted Active-Recall EPUB Reader Blueprint
+# ============================================================
+
+app.register_blueprint(
+    create_epub_blueprint(
+        project_root=os.path.dirname(os.path.abspath(__file__)),
+        get_csrf_token=get_csrf_token,
+        validate_csrf=validate_csrf,
+    )
+)
 
 
 if __name__ == "__main__":

@@ -32,3 +32,8 @@ dist/
 
 # Large model files (too big for GitHub)
 VibeVoice/models/
+
+# EPUB Reader vaults & frontend node_modules
+vault/
+epub_reader_frontend/node_modules/
+epub_reader_frontend/dist/

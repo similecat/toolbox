@@ -251,6 +251,14 @@ curl -k -L https://byang.japaneast.cloudapp.azure.com/api/tts/job/<job_id>/downl
 - **POST** `/api/tts/job/<job_id>/retry`
 - **DELETE** `/api/tts/job/<job_id>`
 
+### Encrypted EPUB Reader APIs
+- **GET** `/api/epub/vault/status` — Check whether the server-side encrypted vault (`data/epub_vault/`, preserved across redeployments and never stored in git) is initialized and unlocked.
+- **POST** `/api/epub/vault/init` / `/api/epub/vault/unlock` / `/api/epub/vault/lock` — Initialize, unlock with master passphrase, or lock the in-memory vault key.
+- **GET** `/api/epub/books` / **POST** `/api/epub/books/import` / **POST** `/api/epub/books/import-vault` — List encrypted books or import `.epub` / portable `.vault` archives.
+- **GET** `/api/epub/books/<book_id>` / **DELETE** `/api/epub/books/<book_id>` — Load book metadata, TOC, spine, and study state, or zero-overwrite delete encrypted objects.
+- **GET** `/api/epub/books/<book_id>/chapters/<spine_index>` & `/assets?path=...` — Serve sanitized chapter HTML/CSS and decrypted in-memory book assets.
+- **PUT** `/progress`, **POST/PATCH/DELETE** `/bookmarks`, **POST/PATCH/DELETE** `/annotations`, **GET/POST** `/export/{epub,markdown,vault}` — Manage reading progress, study notes, and exports.
+
 ### Admin Allow-List API (Requires Admin Web Session)
 - **GET** `/api/admin/allowlist` — List allow-listed emails and registration status
 - **POST** `/api/admin/allowlist` — Add email (`{"email": "user@example.com"}`)

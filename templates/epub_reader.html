@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Encrypted EPUB Reader — Toolbox</title>
+    <link rel="stylesheet" href="/static/epub_reader/assets/epub-reader.css?v={{ asset_version }}" />
+    <script>
+      window.__TOOLBOX_CSRF_TOKEN__ = {{ csrf_token() | tojson }};
+      window.__TOOLBOX_USER_EMAIL__ = {{ (current_user.email if current_user else "") | tojson }};
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/static/epub_reader/assets/epub-reader.js?v={{ asset_version }}"></script>
+  </body>
+</html>
