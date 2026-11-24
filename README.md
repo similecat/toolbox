@@ -160,6 +160,22 @@ sudo bash redeploy.sh --local
 | `journalctl -u toolbox` | View Gunicorn logs |
 | `/var/log/nginx/` | Nginx access and error logs |
 
+### Backing Up the Production Encrypted EPUB Vault to Local
+
+Encrypted EPUB vaults live exclusively on the server under `/opt/toolbox/data/epub_vault` (never tracked in Git). Run `backup_prod_vault.py` locally to pull timestamped, checksum-verified backups into `backups/epub_vault/<YYYYMMDD_HHMMSS>/`:
+
+```bash
+# Create a new timestamped backup from production (auto-detects SSH key)
+python backup_prod_vault.py
+
+# Create a backup and retain only the 30 newest local versions
+python backup_prod_vault.py --keep 30
+
+# List all local timestamped backup versions
+python backup_prod_vault.py --list
+```
+Each version directory (`backups/epub_vault/<YYYYMMDD_HHMMSS>/`) stores an extracted `vault/` copy, a compressed `epub_vault_<timestamp>.tar.gz` archive, and `backup_manifest.json` with per-file SHA-256 checksums.
+
 ---
 
 ## Running the TTS Worker

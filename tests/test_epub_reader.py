@@ -14,6 +14,7 @@ os.environ.setdefault("TOOLBOX_DB_PATH", os.path.join(_TEST_DIR, "init_toolbox.d
 
 import db as job_db
 import app as toolbox_app
+import backup_prod_vault
 from epub_reader.parser import ParsedEpubArchive
 from epub_reader.vault_manager import VaultManager
 from werkzeug.security import generate_password_hash
@@ -400,6 +401,78 @@ class EpubReaderIntegrationTest(unittest.TestCase):
         self.assertFalse(vm.is_initialized())
         self.assertFalse(vm.is_unlocked())
         self.assertFalse(vm.has_dpapi_remember_file())
+
+    def test_versioned_vault_backup_storage_and_retention(self):
+        import datetime
+        import tarfile
+        from pathlib import Path
+
+        src_vault = os.path.join(self.case_dir, "prod_vault")
+        vm = VaultManager(vault_dir=src_vault, scrypt_params={"N": 1024, "r": 8, "p": 1, "keyLen": 32})
+        vm.initialize("backup-test-passphrase", False)
+        vm.import_book(
+            {
+                "title": "Backup Test Book",
+                "author": "Tester",
+                "language": "en",
+                "description": "",
+                "originalFilename": "test.epub",
+                "epubBytes": _build_sample_epub(),
+                "chapterCount": 2,
+                "coverMimeType": None,
+                "coverBase64": None,
+            }
+        )
+        vm.lock()
+
+        tar_buf = io.BytesIO()
+        with tarfile.open(fileobj=tar_buf, mode="w:gz") as tf:
+            tf.add(src_vault, arcname=".")
+        tar_bytes = tar_buf.getvalue()
+
+        backups_root = Path(self.case_dir) / "backups"
+        fixed_dt = datetime.datetime(2026, 11, 24, 14, 30, 0, tzinfo=datetime.timezone.utc)
+
+        m1 = backup_prod_vault.store_versioned_backup_from_tar_bytes(
+            tar_bytes,
+            output_dir=backups_root,
+            host="byang.japaneast.cloudapp.azure.com",
+            remote_dir="/opt/toolbox/data/epub_vault",
+            now_local=fixed_dt,
+        )
+        m2 = backup_prod_vault.store_versioned_backup_from_tar_bytes(
+            tar_bytes,
+            output_dir=backups_root,
+            host="byang.japaneast.cloudapp.azure.com",
+            remote_dir="/opt/toolbox/data/epub_vault",
+            now_local=fixed_dt,
+        )
+        m3 = backup_prod_vault.store_versioned_backup_from_tar_bytes(
+            tar_bytes,
+            output_dir=backups_root,
+            host="byang.japaneast.cloudapp.azure.com",
+            remote_dir="/opt/toolbox/data/epub_vault",
+            now_local=fixed_dt + datetime.timedelta(seconds=5),
+        )
+
+        self.assertEqual(m1["version"], "20261124_143000")
+        self.assertEqual(m2["version"], "20261124_143000_01")
+        self.assertEqual(m3["version"], "20261124_143005")
+        self.assertEqual(m1["objectCount"], 2)
+
+        restored_vm = VaultManager(
+            vault_dir=os.path.join(m1["backupDir"], "vault"),
+            scrypt_params={"N": 1024, "r": 8, "p": 1, "keyLen": 32},
+        )
+        restored_vm.unlock_with_passphrase("backup-test-passphrase")
+        self.assertEqual(len(restored_vm.list_books()), 1)
+        restored_vm.lock()
+
+        self.assertEqual(len(backup_prod_vault.list_local_backups(backups_root)), 3)
+        pruned = backup_prod_vault.prune_old_backups(backups_root, keep=2)
+        self.assertEqual(pruned, ["20261124_143000"])
+        remaining = [b["version"] for b in backup_prod_vault.list_local_backups(backups_root)]
+        self.assertEqual(remaining, ["20261124_143000_01", "20261124_143005"])
 
 
 if __name__ == "__main__":
