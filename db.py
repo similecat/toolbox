@@ -106,6 +106,26 @@ def init_db():
         )
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS machines (
+            machine_id TEXT PRIMARY KEY,
+            machine_name TEXT NOT NULL,
+            ipv4 TEXT,
+            ipv6 TEXT,
+            public_ip TEXT,
+            serving_status TEXT NOT NULL DEFAULT 'serving',
+            status_detail TEXT NOT NULL DEFAULT '',
+            os_info TEXT NOT NULL DEFAULT '',
+            heartbeat_interval INTEGER NOT NULL DEFAULT 60,
+            first_seen_at REAL NOT NULL,
+            last_heartbeat_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_machines_name ON machines(machine_name)
+    """)
+
     now = datetime.datetime.now().isoformat()
 
     # Seed default allowed email once on initial setup

@@ -28,6 +28,7 @@ import requests
 
 import db as job_db
 from epub_reader.blueprint import create_epub_blueprint
+from machine_discovery.blueprint import create_machine_discovery_blueprint
 from ssl_utils import ensure_self_signed_cert
 
 app = Flask(__name__)
@@ -876,6 +877,13 @@ app.register_blueprint(
     create_epub_blueprint(
         project_root=os.path.dirname(os.path.abspath(__file__)),
         get_csrf_token=get_csrf_token,
+        validate_csrf=validate_csrf,
+    )
+)
+
+app.register_blueprint(
+    create_machine_discovery_blueprint(
+        project_root=os.path.dirname(os.path.abspath(__file__)),
         validate_csrf=validate_csrf,
     )
 )

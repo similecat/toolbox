@@ -9,6 +9,7 @@ A collection of useful web tools built with Python Flask, secured with **HTTPS t
 - **Shared REST API Key**: External scripts and workers authenticate across **every** REST API service (`/api/tts/*` and `/api/github/download`) using a single shared default API key (`tbx-default-api-key-2026`, overridable via `TOOLBOX_API_KEY` or `/admin`).
 - **GitHub Repo Downloader**: Download any public or private GitHub repository as a ZIP archive (Web UI & REST API).
 - **Text to Voice**: Submit English or Chinese text for asynchronous VibeVoice speech synthesis and download completed audio files.
+- **Machine Discovery (`/machines` & `/api/machines/*`)**: Cross-platform Linux & Windows machine status inventory reporting IPv4, IPv6, and serving status over persistent HTTPS Keep-Alive heartbeats (`60s` pulse, `>90s` unhealthy, `>180s` unresponsive).
 
 ---
 
@@ -279,6 +280,22 @@ curl -k -L https://byang.japaneast.cloudapp.azure.com/api/tts/job/<job_id>/downl
 - **GET** `/api/admin/allowlist` — List allow-listed emails and registration status
 - **POST** `/api/admin/allowlist` — Add email (`{"email": "user@example.com"}`)
 - **DELETE** `/api/admin/allowlist` — Remove email (`{"email": "user@example.com"}`)
+
+### Machine Discovery APIs & Cross-Platform Client Agent
+- **GET** `/api/machines` — List all registered machines with `machine_name`, `ipv4`, `ipv6`, `public_ip`, `serving_status`, `health_status` (`healthy`, `unhealthy`, `unresponsive`, `offline`), and `effective_status`. Supports `?status=`, `?health=`, and `?q=` filters.
+- **POST** `/api/machines/register` — Register or update full machine metadata and reset heartbeat timer.
+- **POST** `/api/machines/heartbeat` — Ultra-lightweight `60s` pulse (`204 No Content`, or `205 Reset Content` if full registration is required).
+- **POST** `/api/machines/deregister` — Mark a machine `stopped` / `offline` on graceful shutdown.
+- **DELETE** `/api/machines/<machine_id>` — Remove a retired machine entry.
+- **GET** `/api/machines/agent.py` (or `/machines/agent.py`) — Download the zero-dependency Python 3 client script (`clients/machine_agent.py`) for Linux & Windows:
+
+```bash
+# Run client agent on Linux or Windows
+python3 clients/machine_agent.py --server https://byang.japaneast.cloudapp.azure.com --api-key <API_KEY>
+
+# Install as background service (systemd on Linux, Scheduled Task on Windows)
+sudo python3 clients/machine_agent.py --server https://byang.japaneast.cloudapp.azure.com --api-key <API_KEY> --install-service
+```
 
 ---
 

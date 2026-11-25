@@ -211,6 +211,8 @@ server {
     ssl_prefer_server_ciphers on;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
+    keepalive_timeout 95s;
+    keepalive_requests 10000;
 
     # Allow large file uploads (500 MB for audio files)
     client_max_body_size 500M;

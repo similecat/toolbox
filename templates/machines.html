@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Machine Discovery — Web Toolbox</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 32px 20px;
+            color: #1f2937;
+        }
+
+        .container {
+            max-width: 1180px;
+            margin: 0 auto;
+        }
+
+        .nav-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .back-link {
+            color: white;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.95rem;
+            opacity: 0.92;
+            transition: opacity 0.2s;
+        }
+
+        .back-link:hover {
+            opacity: 1;
+        }
+
+        .user-links {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            color: white;
+            font-size: 0.9rem;
+        }
+
+        .user-links a {
+            color: white;
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.18);
+            transition: background 0.2s;
+        }
+
+        .user-links a:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+            margin-bottom: 22px;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 22px;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            color: #1f2937;
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            color: #6b7280;
+            font-size: 0.95rem;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 9px 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            text-decoration: none;
+            transition: all 0.15s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.94;
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background: #f9fafb;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+
+        .btn-outline:hover {
+            background: #f3f4f6;
+        }
+
+        .btn-danger-sm {
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            border-radius: 6px;
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+            cursor: pointer;
+        }
+
+        .btn-danger-sm:hover {
+            background: #fee2e2;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px;
+            margin-bottom: 22px;
+        }
+
+        .kpi-box {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 14px 16px;
+            background: #f9fafb;
+        }
+
+        .kpi-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #6b7280;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .kpi-val {
+            font-size: 1.65rem;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .kpi-serving .kpi-val { color: #059669; }
+        .kpi-degraded .kpi-val { color: #d97706; }
+        .kpi-unhealthy .kpi-val { color: #ea580c; }
+        .kpi-unresponsive .kpi-val { color: #dc2626; }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 240px;
+            padding: 10px 14px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 0.92rem;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .filter-pill {
+            padding: 7px 12px;
+            border-radius: 20px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            border: 1px solid #e5e7eb;
+            background: #f9fafb;
+            color: #4b5563;
+            cursor: pointer;
+        }
+
+        .filter-pill.active {
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.92rem;
+        }
+
+        thead {
+            background: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        th {
+            padding: 12px 14px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #6b7280;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 13px 14px;
+            border-bottom: 1px solid #f3f4f6;
+            vertical-align: middle;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: #fafbff;
+        }
+
+        .host-name {
+            font-weight: 600;
+            color: #111827;
+            font-size: 0.96rem;
+        }
+
+        .host-meta {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+
+        .ip-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.84rem;
+            background: #f3f4f6;
+            color: #1f2937;
+            padding: 4px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 1px solid #e5e7eb;
+            transition: background 0.15s;
+        }
+
+        .ip-chip:hover {
+            background: #e5e7eb;
+        }
+
+        .nat-note {
+            display: block;
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-top: 4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        .muted {
+            color: #9ca3af;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .st-serving { background: #ecfdf5; color: #065f46; }
+        .st-serving .dot { background: #10b981; }
+
+        .st-busy, .st-draining, .st-maintenance, .st-degraded {
+            background: #fffbeb;
+            color: #92400e;
+        }
+        .st-busy .dot, .st-draining .dot, .st-maintenance .dot, .st-degraded .dot {
+            background: #f59e0b;
+        }
+
+        .st-unhealthy { background: #fff7ed; color: #9a3412; }
+        .st-unhealthy .dot { background: #f97316; }
+
+        .st-unresponsive { background: #fef2f2; color: #991b1b; }
+        .st-unresponsive .dot { background: #ef4444; }
+
+        .st-offline, .st-stopped { background: #f3f4f6; color: #4b5563; }
+        .st-offline .dot, .st-stopped .dot { background: #9ca3af; }
+
+        .detail-text {
+            font-size: 0.79rem;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 42px 20px;
+            color: #6b7280;
+        }
+
+        .footer-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            font-size: 0.82rem;
+            color: #6b7280;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .setup-panel {
+            display: none;
+            margin-top: 18px;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 18px;
+        }
+
+        .setup-panel.open {
+            display: block;
+        }
+
+        .code-block {
+            background: #111827;
+            color: #e5e7eb;
+            padding: 12px 14px;
+            border-radius: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.82rem;
+            overflow-x: auto;
+            margin-top: 6px;
+            margin-bottom: 14px;
+            line-height: 1.5;
+        }
+
+        .setup-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #374151;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 22px;
+            right: 22px;
+            background: #111827;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 0.86rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 50;
+        }
+
+        .toast.show {
+            opacity: 0.95;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-row">
+            <a href="/" class="back-link">← Back to Toolbox</a>
+            {% if current_user %}
+            <div class="user-links">
+                <span>👤 {{ current_user.email }}</span>
+                {% if current_user.is_admin %}
+                <a href="/admin">🛡️ Admin</a>
+                {% endif %}
+                <a href="/logout">Sign Out</a>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <div class="header-row">
+                <div>
+                    <h1>🖥️ Machine Discovery</h1>
+                    <p class="subtitle">Live IPv4 / IPv6 inventory, service readiness, and low-overhead heartbeat health across Linux &amp; Windows hosts.</p>
+                </div>
+                <div class="header-actions">
+                    <button type="button" class="btn btn-outline" id="toggleSetupBtn">⚡ Client Setup</button>
+                    <a href="/machines/agent.py" class="btn btn-outline">⬇ machine_agent.py</a>
+                    <button type="button" class="btn btn-primary" id="refreshBtn">↻ Refresh</button>
+                </div>
+            </div>
+
+            <div class="kpi-grid">
+                <div class="kpi-box">
+                    <div class="kpi-label">Total Machines</div>
+                    <div class="kpi-val" id="kpiTotal">0</div>
+                </div>
+                <div class="kpi-box kpi-serving">
+                    <div class="kpi-label">Serving (Healthy)</div>
+                    <div class="kpi-val" id="kpiServing">0</div>
+                </div>
+                <div class="kpi-box kpi-degraded">
+                    <div class="kpi-label">Degraded / Busy</div>
+                    <div class="kpi-val" id="kpiDegraded">0</div>
+                </div>
+                <div class="kpi-box kpi-unhealthy">
+                    <div class="kpi-label">Unhealthy (&gt;90s)</div>
+                    <div class="kpi-val" id="kpiUnhealthy">0</div>
+                </div>
+                <div class="kpi-box kpi-unresponsive">
+                    <div class="kpi-label">Unresponsive (&gt;180s)</div>
+                    <div class="kpi-val" id="kpiUnresponsive">0</div>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <input
+                    type="text"
+                    id="searchInput"
+                    class="search-input"
+                    placeholder="Filter by machine name, IPv4, IPv6, OS, or status detail..."
+                >
+                <div class="filter-group" id="filterPills">
+                    <button type="button" class="filter-pill active" data-filter="all">All</button>
+                    <button type="button" class="filter-pill" data-filter="serving">Serving</button>
+                    <button type="button" class="filter-pill" data-filter="degraded_busy">Degraded / Busy</button>
+                    <button type="button" class="filter-pill" data-filter="unhealthy">Unhealthy</button>
+                    <button type="button" class="filter-pill" data-filter="unresponsive">Unresponsive</button>
+                    <button type="button" class="filter-pill" data-filter="offline">Offline</button>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Machine Name</th>
+                            <th>IPv4 Address</th>
+                            <th>IPv6 Address</th>
+                            <th>Serving Status</th>
+                            <th>Last Heartbeat</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="machinesBody">
+                        <tr>
+                            <td colspan="6" class="empty-state">Loading machines...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="footer-meta">
+                <span>Heartbeat policy: <strong>60s</strong> pulse · <strong>&gt;90s</strong> unhealthy · <strong>&gt;180s</strong> unresponsive (click any IP to copy)</span>
+                <span id="lastUpdatedText">Auto-refresh every 15s</span>
+            </div>
+
+            <div class="setup-panel" id="setupPanel">
+                {% set key_placeholder = admin_api_key if admin_api_key else '<YOUR_TOOLBOX_API_KEY>' %}
+                <div class="setup-title">1. Linux — Download &amp; Install as Persistent systemd Service</div>
+                <pre class="code-block">curl -fsSLk -H "X-API-Key: {{ key_placeholder }}" "{{ server_base_url }}/api/machines/agent.py" -o machine_agent.py
+sudo python3 machine_agent.py --server "{{ server_base_url }}" --api-key "{{ key_placeholder }}" --install-service</pre>
+
+                <div class="setup-title">2. Windows (PowerShell) — Download &amp; Install as Background Scheduled Task</div>
+                <pre class="code-block">curl.exe -fsSLk -H "X-API-Key: {{ key_placeholder }}" "{{ server_base_url }}/api/machines/agent.py" -o machine_agent.py
+python machine_agent.py --server "{{ server_base_url }}" --api-key "{{ key_placeholder }}" --install-service</pre>
+
+                <div class="setup-title">3. REST API Query Example</div>
+                <pre class="code-block">curl -fsSLk -H "X-API-Key: {{ key_placeholder }}" "{{ server_base_url }}/api/machines"</pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const CSRF_TOKEN = {{ csrf_token() | tojson }};
+        let allMachines = [];
+        let activeFilter = "all";
+
+        function escapeHtml(val) {
+            if (val === null || val === undefined) return "";
+            return String(val)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function showToast(msg) {
+            const el = document.getElementById("toast");
+            el.textContent = msg;
+            el.classList.add("show");
+            clearTimeout(el._timer);
+            el._timer = setTimeout(() => el.classList.remove("show"), 1800);
+        }
+
+        function formatAge(sec) {
+            if (sec < 60) return `${sec}s ago`;
+            if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s ago`;
+            if (sec < 86400) return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m ago`;
+            return `${Math.floor(sec / 86400)}d ago`;
+        }
+
+        function copyIp(ip) {
+            if (!ip || !navigator.clipboard) return;
+            navigator.clipboard.writeText(ip).then(() => showToast(`Copied ${ip}`));
+        }
+
+        function matchesFilter(m) {
+            if (activeFilter === "all") return true;
+            if (activeFilter === "serving") return m.effective_status === "serving";
+            if (activeFilter === "degraded_busy") {
+                return m.health_status === "healthy" && m.serving_status !== "serving";
+            }
+            if (activeFilter === "unhealthy") return m.health_status === "unhealthy";
+            if (activeFilter === "unresponsive") return m.health_status === "unresponsive";
+            if (activeFilter === "offline") return m.health_status === "offline";
+            return true;
+        }
+
+        function matchesSearch(m, q) {
+            if (!q) return true;
+            const hay = [
+                m.machine_name,
+                m.ipv4,
+                m.ipv6,
+                m.public_ip,
+                m.os_info,
+                m.status_detail,
+                m.effective_status,
+                m.serving_status
+            ].filter(Boolean).join(" ").toLowerCase();
+            return hay.includes(q);
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById("machinesBody");
+            const q = document.getElementById("searchInput").value.trim().toLowerCase();
+            const rows = allMachines.filter(m => matchesFilter(m) && matchesSearch(m, q));
+
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${
+                    allMachines.length === 0
+                        ? "No machines have reported yet. Click <strong>Client Setup</strong> above to start an agent."
+                        : "No machines match the current filter."
+                }</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = rows.map(m => {
+                const eff = escapeHtml(m.effective_status || "unknown");
+                const badgeClass = `st-${eff}`;
+                const ipv4Cell = m.ipv4
+                    ? `<span class="ip-chip" data-copy="${escapeHtml(m.ipv4)}" title="Click to copy IPv4">${escapeHtml(m.ipv4)}</span>`
+                    : `<span class="muted">—</span>`;
+                const showNat = m.public_ip && m.public_ip !== m.ipv4 && m.public_ip !== "127.0.0.1" && m.public_ip !== "::1";
+                const natLine = showNat ? `<span class="nat-note">Public: ${escapeHtml(m.public_ip)}</span>` : "";
+
+                const ipv6Cell = m.ipv6
+                    ? `<span class="ip-chip" data-copy="${escapeHtml(m.ipv6)}" title="Click to copy IPv6">${escapeHtml(m.ipv6)}</span>`
+                    : `<span class="muted">—</span>`;
+
+                let extraNote = "";
+                if (m.health_status === "unhealthy" || m.health_status === "unresponsive") {
+                    extraNote = `Last reported: ${escapeHtml(m.serving_status)}`;
+                }
+                if (m.status_detail) {
+                    extraNote = extraNote ? `${extraNote} · ${escapeHtml(m.status_detail)}` : escapeHtml(m.status_detail);
+                }
+
+                return `<tr>
+                    <td>
+                        <div class="host-name">${escapeHtml(m.machine_name)}</div>
+                        ${m.os_info ? `<div class="host-meta">${escapeHtml(m.os_info)}</div>` : ""}
+                    </td>
+                    <td>${ipv4Cell}${natLine}</td>
+                    <td>${ipv6Cell}</td>
+                    <td>
+                        <span class="badge ${badgeClass}"><span class="dot"></span>${eff}</span>
+                        ${extraNote ? `<div class="detail-text">${extraNote}</div>` : ""}
+                    </td>
+                    <td title="Last pulse: ${escapeHtml(m.last_heartbeat_at)} (interval ${m.heartbeat_interval}s)">
+                        <div>${formatAge(m.seconds_since_heartbeat)}</div>
+                        <div class="host-meta">${escapeHtml(m.last_heartbeat_at)}</div>
+                    </td>
+                    <td>
+                        <button type="button" class="btn-danger-sm" data-delete-id="${escapeHtml(m.machine_id)}" data-delete-name="${escapeHtml(m.machine_name)}">Remove</button>
+                    </td>
+                </tr>`;
+            }).join("");
+        }
+
+        async function loadMachines() {
+            try {
+                const resp = await fetch("/api/machines", { credentials: "same-origin" });
+                if (resp.status === 401) {
+                    window.location.href = "/login?next=/machines";
+                    return;
+                }
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                allMachines = data.machines || [];
+                const s = data.summary || {};
+
+                document.getElementById("kpiTotal").textContent = s.total ?? 0;
+                document.getElementById("kpiServing").textContent = s.serving ?? 0;
+                document.getElementById("kpiDegraded").textContent = s.degraded_or_busy ?? 0;
+                document.getElementById("kpiUnhealthy").textContent = s.unhealthy ?? 0;
+                document.getElementById("kpiUnresponsive").textContent = (s.unresponsive ?? 0) + (s.offline ?? 0);
+
+                document.getElementById("lastUpdatedText").textContent =
+                    `Updated ${new Date().toLocaleTimeString()} · Auto-refresh 15s`;
+                renderTable();
+            } catch (err) {
+                document.getElementById("lastUpdatedText").textContent = `Refresh failed (${err.message})`;
+            }
+        }
+
+        async function deleteMachine(machineId, machineName) {
+            if (!confirm(`Remove '${machineName}' from the discovery list?`)) return;
+            try {
+                const resp = await fetch(`/api/machines/${encodeURIComponent(machineId)}`, {
+                    method: "DELETE",
+                    credentials: "same-origin",
+                    headers: { "X-CSRF-Token": CSRF_TOKEN }
+                });
+                if (!resp.ok) {
+                    const body = await resp.json().catch(() => ({}));
+                    throw new Error(body.error || `HTTP ${resp.status}`);
+                }
+                showToast(`Removed ${machineName}`);
+                await loadMachines();
+            } catch (err) {
+                alert(`Failed to remove machine: ${err.message}`);
+            }
+        }
+
+        document.getElementById("refreshBtn").addEventListener("click", loadMachines);
+        document.getElementById("searchInput").addEventListener("input", renderTable);
+        document.getElementById("toggleSetupBtn").addEventListener("click", () => {
+            document.getElementById("setupPanel").classList.toggle("open");
+        });
+
+        document.getElementById("filterPills").addEventListener("click", (e) => {
+            const btn = e.target.closest(".filter-pill");
+            if (!btn) return;
+            document.querySelectorAll(".filter-pill").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeFilter = btn.dataset.filter;
+            renderTable();
+        });
+
+        document.getElementById("machinesBody").addEventListener("click", (e) => {
+            const copyEl = e.target.closest("[data-copy]");
+            if (copyEl) {
+                copyIp(copyEl.dataset.copy);
+                return;
+            }
+            const delBtn = e.target.closest("[data-delete-id]");
+            if (delBtn) {
+                deleteMachine(delBtn.dataset.deleteId, delBtn.dataset.deleteName);
+            }
+        });
+
+        setInterval(() => {
+            if (!document.hidden) loadMachines();
+        }, 15000);
+
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) loadMachines();
+        });
+
+        loadMachines();
+    </script>
+</body>
+</html>
