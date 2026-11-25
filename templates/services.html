@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worker &amp; Service Discovery — Web Toolbox</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 32px 20px;
+            color: #1f2937;
+        }
+
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        .nav-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .back-link {
+            color: white;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.95rem;
+            opacity: 0.92;
+            transition: opacity 0.2s;
+        }
+
+        .back-link:hover {
+            opacity: 1;
+        }
+
+        .nav-pill {
+            color: white;
+            text-decoration: none;
+            padding: 5px 11px;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            background: rgba(255, 255, 255, 0.18);
+            transition: background 0.2s;
+        }
+
+        .nav-pill:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .user-links {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            color: white;
+            font-size: 0.9rem;
+        }
+
+        .user-links a {
+            color: white;
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.18);
+            transition: background 0.2s;
+        }
+
+        .user-links a:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+            margin-bottom: 22px;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 22px;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            color: #1f2937;
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            color: #6b7280;
+            font-size: 0.95rem;
+            max-width: 780px;
+            line-height: 1.45;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 9px 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            text-decoration: none;
+            transition: all 0.15s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a6fd6;
+        }
+
+        .btn-outline {
+            background: #f3f4f6;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+
+        .btn-outline:hover {
+            background: #e5e7eb;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            border-radius: 6px;
+        }
+
+        .btn-inspect {
+            background: #eef2ff;
+            color: #4338ca;
+            border: 1px solid #c7d2fe;
+        }
+
+        .btn-inspect:hover {
+            background: #e0e7ff;
+        }
+
+        .btn-danger-sm {
+            background: transparent;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .btn-danger-sm:hover {
+            background: #fef2f2;
+        }
+
+        .policy-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            background: linear-gradient(90deg, #eef2ff 0%, #f5f3ff 100%);
+            border: 1px solid #c7d2fe;
+            border-radius: 10px;
+            padding: 11px 16px;
+            margin-bottom: 20px;
+            font-size: 0.86rem;
+            color: #3730a3;
+        }
+
+        .policy-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: #4f46e5;
+            color: white;
+            font-weight: 700;
+            font-size: 0.74rem;
+            padding: 3px 9px;
+            border-radius: 999px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+            gap: 13px;
+            margin-bottom: 22px;
+        }
+
+        .kpi-box {
+            border-radius: 12px;
+            padding: 15px 16px;
+            border: 1px solid #e5e7eb;
+            background: #f9fafb;
+        }
+
+        .kpi-label {
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #6b7280;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .kpi-val {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .kpi-sub {
+            font-size: 0.78rem;
+            color: #6b7280;
+            margin-top: 3px;
+        }
+
+        .kpi-online .kpi-val { color: #059669; }
+        .kpi-degraded .kpi-val { color: #d97706; }
+        .kpi-unhealthy .kpi-val { color: #dc2626; }
+        .kpi-p2p .kpi-val { color: #4f46e5; }
+
+        .section-heading {
+            font-size: 0.88rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #4b5563;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .catalog-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 12px;
+            margin-bottom: 22px;
+        }
+
+        .catalog-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 14px 16px;
+            background: #ffffff;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .catalog-card:hover {
+            border-color: #a5b4fc;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+        }
+
+        .catalog-card.selected {
+            border-color: #4f46e5;
+            background: #f5f7ff;
+            box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.18);
+        }
+
+        .catalog-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            gap: 8px;
+        }
+
+        .svc-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            background: #eef2ff;
+            color: #3730a3;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-weight: 700;
+            font-size: 0.84rem;
+        }
+
+        .svc-ver {
+            font-size: 0.74rem;
+            color: #6b7280;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        .catalog-metrics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: 0.8rem;
+            color: #4b5563;
+            margin-bottom: 8px;
+        }
+
+        .op-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .op-chip {
+            font-size: 0.73rem;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: #f3f4f6;
+            color: #374151;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 250px;
+            padding: 9px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 0.92rem;
+            outline: none;
+        }
+
+        .search-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.16);
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .filter-pill {
+            padding: 6px 12px;
+            border-radius: 999px;
+            border: 1px solid #d1d5db;
+            background: white;
+            color: #4b5563;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .filter-pill.active {
+            background: #1f2937;
+            color: white;
+            border-color: #1f2937;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.88rem;
+        }
+
+        thead {
+            background: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        th {
+            padding: 12px 14px;
+            font-weight: 600;
+            color: #4b5563;
+            font-size: 0.77rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 13px 14px;
+            border-bottom: 1px solid #f3f4f6;
+            vertical-align: top;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: #f9fafb;
+        }
+
+        .worker-name {
+            font-weight: 700;
+            color: #111827;
+            font-size: 0.94rem;
+        }
+
+        .worker-sub {
+            font-size: 0.77rem;
+            color: #6b7280;
+            margin-top: 2px;
+            word-break: break-word;
+        }
+
+        .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .ep-chip {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            background: #f3f4f6;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            color: #1f2937;
+            display: inline-block;
+            cursor: pointer;
+            border: 1px solid transparent;
+            margin: 2px 3px 2px 0;
+        }
+
+        .ep-chip:hover {
+            border-color: #9ca3af;
+            background: #e5e7eb;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.77rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .badge-online { background: #ecfdf5; color: #065f46; }
+        .badge-online .dot { background: #10b981; }
+
+        .badge-starting, .badge-draining { background: #eff6ff; color: #1e40af; }
+        .badge-starting .dot, .badge-draining .dot { background: #3b82f6; }
+
+        .badge-degraded { background: #fffbeb; color: #92400e; }
+        .badge-degraded .dot { background: #f59e0b; }
+
+        .badge-unhealthy { background: #fef2f2; color: #991b1b; }
+        .badge-unhealthy .dot { background: #ef4444; }
+
+        .badge-unresponsive { background: #450a0a; color: #fecaca; }
+        .badge-unresponsive .dot { background: #f87171; }
+
+        .badge-offline { background: #f3f4f6; color: #4b5563; }
+        .badge-offline .dot { background: #9ca3af; }
+
+        .load-bar-track {
+            width: 110px;
+            height: 7px;
+            background: #e5e7eb;
+            border-radius: 999px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .load-bar-fill {
+            height: 100%;
+            background: #10b981;
+            border-radius: 999px;
+            transition: width 0.25s;
+        }
+
+        .load-bar-fill.warn { background: #f59e0b; }
+        .load-bar-fill.crit { background: #ef4444; }
+
+        .stat-line {
+            font-size: 0.82rem;
+            color: #1f2937;
+            line-height: 1.45;
+        }
+
+        .stat-muted {
+            font-size: 0.76rem;
+            color: #6b7280;
+        }
+
+        .action-stack {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 42px 20px;
+            color: #6b7280;
+        }
+
+        .footer-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 14px;
+            font-size: 0.82rem;
+            color: #6b7280;
+        }
+
+        .setup-panel {
+            display: none;
+            margin-top: 18px;
+            padding: 20px;
+            border-radius: 12px;
+            background: #111827;
+            color: #f9fafb;
+        }
+
+        .setup-panel.open {
+            display: block;
+        }
+
+        .setup-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #e5e7eb;
+        }
+
+        .code-block {
+            background: #1f2937;
+            padding: 12px 14px;
+            border-radius: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.81rem;
+            overflow-x: auto;
+            color: #a7f3d0;
+            margin-bottom: 14px;
+            line-height: 1.5;
+            white-space: pre;
+        }
+
+        /* Detail Modal */
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.62);
+            backdrop-filter: blur(3px);
+            z-index: 100;
+            padding: 28px 16px;
+            overflow-y: auto;
+        }
+
+        .modal-backdrop.open {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+        }
+
+        .modal-card {
+            background: white;
+            border-radius: 16px;
+            max-width: 960px;
+            width: 100%;
+            padding: 26px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+            margin: auto 0;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 14px;
+            margin-bottom: 18px;
+        }
+
+        .modal-close {
+            background: #f3f4f6;
+            border: none;
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            color: #374151;
+        }
+
+        .modal-close:hover {
+            background: #e5e7eb;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .detail-box {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .detail-label {
+            font-size: 0.73rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #6b7280;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .detail-val {
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: #111827;
+            word-break: break-word;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .chart-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 14px;
+            background: #ffffff;
+        }
+
+        .chart-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #374151;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .json-box {
+            background: #111827;
+            color: #e5e7eb;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.78rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 22px;
+            right: 22px;
+            background: #111827;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.2s;
+            pointer-events: none;
+            z-index: 200;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-row">
+            <div class="nav-left">
+                <a href="/" class="back-link">← Back to Toolbox</a>
+                <a href="/machines" class="nav-pill">🖥️ Machine Discovery</a>
+            </div>
+            {% if current_user %}
+            <div class="user-links">
+                <span>👤 {{ current_user.email }}</span>
+                {% if current_user.is_admin %}
+                <a href="/admin">🛡️ Admin</a>
+                {% endif %}
+                <a href="/logout">Sign Out</a>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <div class="header-row">
+                <div>
+                    <h1>🧩 Worker &amp; Service Discovery</h1>
+                    <p class="subtitle">
+                        Mandatory service registration, live worker health &amp; statistical telemetry, and direct Peer-to-Peer (P2P) worker RPC discovery without central server payload hops.
+                    </p>
+                </div>
+                <div class="header-actions">
+                    <button type="button" class="btn btn-outline" id="toggleSetupBtn">⚡ Worker SDK &amp; P2P Setup</button>
+                    <a href="/services/worker_sdk.py" class="btn btn-outline">⬇ worker_sdk.py</a>
+                    <button type="button" class="btn btn-primary" id="refreshBtn">↻ Refresh</button>
+                </div>
+            </div>
+
+            <div class="policy-banner">
+                <div>
+                    <span class="policy-badge">Mandatory Policy</span>
+                    <span style="margin-left: 8px;">
+                        All worker services must hold an active registration lease (<strong>X-Worker-Id</strong> + <strong>X-Worker-Lease</strong>) and send heartbeats to consume tasks or accept P2P traffic.
+                    </span>
+                </div>
+                <span class="mono" id="revisionLabel">rev #0</span>
+            </div>
+
+            <div class="kpi-grid">
+                <div class="kpi-box">
+                    <div class="kpi-label">Registered Workers</div>
+                    <div class="kpi-val" id="kpiTotal">0</div>
+                    <div class="kpi-sub" id="kpiServiceTypes">0 service types</div>
+                </div>
+                <div class="kpi-box kpi-online">
+                    <div class="kpi-label">Online (Routable)</div>
+                    <div class="kpi-val" id="kpiOnline">0</div>
+                    <div class="kpi-sub">Healthy &amp; accepting P2P</div>
+                </div>
+                <div class="kpi-box kpi-degraded">
+                    <div class="kpi-label">Degraded / Draining</div>
+                    <div class="kpi-val" id="kpiDegraded">0</div>
+                    <div class="kpi-sub">Alive with warnings</div>
+                </div>
+                <div class="kpi-box kpi-unhealthy">
+                    <div class="kpi-label">Unhealthy / Stale</div>
+                    <div class="kpi-val" id="kpiUnhealthy">0</div>
+                    <div class="kpi-sub">Missed heartbeat lease</div>
+                </div>
+                <div class="kpi-box">
+                    <div class="kpi-label">Active Load / Slots</div>
+                    <div class="kpi-val" id="kpiLoad">0 / 0</div>
+                    <div class="kpi-sub" id="kpiSuccessRate">100% success rate</div>
+                </div>
+                <div class="kpi-box kpi-p2p">
+                    <div class="kpi-label">Total Requests (Direct P2P)</div>
+                    <div class="kpi-val" id="kpiRequests">0</div>
+                    <div class="kpi-sub" id="kpiP2PSub">0 P2P calls · 0 ms avg</div>
+                </div>
+            </div>
+
+            <div id="catalogSection" style="display: none;">
+                <div class="section-heading">
+                    <span>Service Catalog (Click a service to filter)</span>
+                    <button type="button" class="btn btn-outline btn-sm" id="clearServiceBtn" style="display: none;">Clear Service Filter</button>
+                </div>
+                <div class="catalog-grid" id="catalogGrid"></div>
+            </div>
+
+            <div class="toolbar">
+                <input
+                    type="text"
+                    id="searchInput"
+                    class="search-input"
+                    placeholder="Filter by worker name, ID, service type, host, endpoint IP:port, OS, operation, or status..."
+                >
+                <div class="filter-group" id="filterPills">
+                    <button type="button" class="filter-pill active" data-filter="all">All</button>
+                    <button type="button" class="filter-pill" data-filter="online">Online</button>
+                    <button type="button" class="filter-pill" data-filter="starting_draining">Starting / Draining</button>
+                    <button type="button" class="filter-pill" data-filter="degraded">Degraded</button>
+                    <button type="button" class="filter-pill" data-filter="unhealthy">Unhealthy</button>
+                    <button type="button" class="filter-pill" data-filter="unresponsive">Unresponsive</button>
+                    <button type="button" class="filter-pill" data-filter="offline">Offline</button>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Worker &amp; Host Info</th>
+                            <th>Service &amp; P2P Endpoints</th>
+                            <th>Worker Status &amp; Load</th>
+                            <th>Statistical Data (Traffic &amp; Latency)</th>
+                            <th>Resources &amp; Custom Stats</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workersBody">
+                        <tr>
+                            <td colspan="6" class="empty-state">Loading registered worker services...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="footer-meta">
+                <span>Heartbeat policy: <strong>30s</strong> default pulse · <strong>&gt;1.5×</strong> unhealthy · <strong>&gt;3×</strong> unresponsive (click any P2P endpoint to copy)</span>
+                <span id="lastUpdatedText">Auto-refresh every 10s</span>
+            </div>
+
+            <div class="setup-panel" id="setupPanel">
+                {% set key_placeholder = admin_api_key if admin_api_key else '<YOUR_TOOLBOX_API_KEY>' %}
+                <div class="setup-title">1. Start Existing VibeVoice TTS Worker (Mandatory Registration + P2P Server)</div>
+                <pre class="code-block">python VibeVoice/demo/tts_worker.py --base_url "{{ server_base_url }}" --api_key "{{ key_placeholder }}" --p2p_port 9410</pre>
+
+                <div class="setup-title">2. Build Any New Worker Service &amp; Call Peer Workers Directly (Zero Central Server Hop)</div>
+                <pre class="code-block">from worker_sdk import ToolboxWorkerRuntime
+
+runtime = ToolboxWorkerRuntime(
+    server_url="{{ server_base_url }}",
+    api_key="{{ key_placeholder }}",
+    service_type="podcast-pipeline",
+    service_version="1.0.0",
+    max_concurrency=4,
+    capabilities={"formats": ["wav", "mp3"]},
+)
+
+@runtime.operation("narrate_summary")
+def narrate_summary(payload, ctx):
+    # Direct Peer-to-Peer call to an online 'tts' worker — audio bytes travel Worker -> Worker!
+    wav_resp = runtime.call_peer_raw("tts", "synthesize", {
+        "text": payload["text"],
+        "language": payload.get("language", "en"),
+    })
+    return {"audio_bytes": len(wav_resp.body), "tts_worker": wav_resp.headers.get("x-worker-id")}
+
+with runtime:
+    runtime.serve_forever()</pre>
+
+                <div class="setup-title">3. Discover Routable Peers via REST API</div>
+                <pre class="code-block">curl -fsSLk -H "X-API-Key: {{ key_placeholder }}" "{{ server_base_url }}/api/services/discover/tts"</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Worker Detail & Telemetry Modal -->
+    <div class="modal-backdrop" id="detailModal">
+        <div class="modal-card" role="dialog" aria-modal="true">
+            <div class="modal-header">
+                <div>
+                    <h2 id="modalTitle" style="font-size: 1.3rem; color: #111827;">Worker Details</h2>
+                    <div id="modalSubtitle" class="worker-sub mono" style="margin-top: 4px;"></div>
+                </div>
+                <button type="button" class="modal-close" id="closeModalBtn" title="Close">✕</button>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const CSRF_TOKEN = {{ csrf_token() | tojson }};
+        let allWorkers = [];
+        let serviceCatalog = [];
+        let activeStatusFilter = "all";
+        let activeServiceFilter = "";
+        let lastEtag = "";
+
+        function escapeHtml(val) {
+            if (val === null || val === undefined) return "";
+            return String(val)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function showToast(msg) {
+            const el = document.getElementById("toast");
+            el.textContent = msg;
+            el.classList.add("show");
+            clearTimeout(el._timer);
+            el._timer = setTimeout(() => el.classList.remove("show"), 1900);
+        }
+
+        function formatAge(sec) {
+            if (sec === null || sec === undefined) return "—";
+            sec = Math.max(0, Math.floor(Number(sec)));
+            if (sec < 60) return `${sec}s ago`;
+            if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s ago`;
+            if (sec < 86400) return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m ago`;
+            return `${Math.floor(sec / 86400)}d ago`;
+        }
+
+        function formatDuration(sec) {
+            if (!sec || sec < 0) return "0s";
+            sec = Math.floor(Number(sec));
+            if (sec < 60) return `${sec}s`;
+            if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            return h < 48 ? `${h}h ${m}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
+        }
+
+        function formatNum(n) {
+            if (n === null || n === undefined) return "0";
+            return Number(n).toLocaleString();
+        }
+
+        function copyText(txt) {
+            if (!txt || !navigator.clipboard) return;
+            navigator.clipboard.writeText(txt).then(() => showToast(`Copied ${txt}`));
+        }
+
+        function badgeClassFor(eff) {
+            if (eff === "serving" || eff === "idle" || eff === "online") return "badge-online";
+            if (eff === "busy" || eff === "starting" || eff === "draining") return "badge-starting";
+            if (eff === "degraded" || eff === "error") return "badge-degraded";
+            if (eff === "unhealthy") return "badge-unhealthy";
+            if (eff === "unresponsive") return "badge-unresponsive";
+            return "badge-offline";
+        }
+
+        function matchesStatusFilter(w) {
+            if (activeStatusFilter === "all") return true;
+            const eff = w.effective_status || "offline";
+            if (activeStatusFilter === "online") return eff === "serving" || eff === "idle" || eff === "busy";
+            if (activeStatusFilter === "starting_draining") return eff === "starting" || eff === "draining" || eff === "busy";
+            if (activeStatusFilter === "degraded") return eff === "degraded" || eff === "error";
+            return eff === activeStatusFilter;
+        }
+
+        function matchesSearch(w, q) {
+            if (!q) return true;
+            const eps = (w.endpoints || []).map(e => e.url || `${e.protocol || e.scheme || "http"}://${e.host}:${e.port}`).join(" ");
+            const caps = JSON.stringify(w.capabilities || {});
+            const hay = [
+                w.worker_name,
+                w.worker_id,
+                w.service_type,
+                w.service_version,
+                w.host_name,
+                w.os_info,
+                w.machine_id,
+                w.observed_ip,
+                w.effective_status,
+                w.status_detail,
+                eps,
+                caps
+            ].filter(Boolean).join(" ").toLowerCase();
+            return hay.includes(q);
+        }
+
+        function renderCatalog() {
+            const sec = document.getElementById("catalogSection");
+            const grid = document.getElementById("catalogGrid");
+            const clearBtn = document.getElementById("clearServiceBtn");
+
+            if (!serviceCatalog || serviceCatalog.length === 0) {
+                sec.style.display = "none";
+                return;
+            }
+            sec.style.display = "block";
+            clearBtn.style.display = activeServiceFilter ? "inline-flex" : "none";
+
+            grid.innerHTML = serviceCatalog.map(cat => {
+                const selected = activeServiceFilter === cat.service_type ? "selected" : "";
+                const vers = (cat.versions || []).join(", ");
+                const ops = (cat.operations || []).slice(0, 6);
+                const opsHtml = ops.length
+                    ? ops.map(op => `<span class="op-chip">${escapeHtml(op)}()</span>`).join("")
+                    : `<span class="stat-muted">queue worker</span>`;
+
+                return `
+                    <div class="catalog-card ${selected}" data-svc="${escapeHtml(cat.service_type)}">
+                        <div class="catalog-top">
+                            <span class="svc-tag">${escapeHtml(cat.service_type)}</span>
+                            <span class="svc-ver">v${escapeHtml(vers)}</span>
+                        </div>
+                        <div class="catalog-metrics">
+                            <span><strong>${cat.routable_workers ?? cat.healthy_workers ?? 0}</strong>/${cat.total_workers} routable</span>
+                            <span>Load: <strong>${cat.active_tasks}</strong>/${cat.total_capacity}</span>
+                            <span>Reqs: <strong>${formatNum(cat.total_requests)}</strong> (${formatNum(cat.p2p_requests)} P2P)</span>
+                        </div>
+                        <div class="op-chips">${opsHtml}</div>
+                    </div>
+                `;
+            }).join("");
+
+            grid.querySelectorAll(".catalog-card").forEach(el => {
+                el.addEventListener("click", () => {
+                    const svc = el.getAttribute("data-svc");
+                    activeServiceFilter = (activeServiceFilter === svc) ? "" : svc;
+                    renderCatalog();
+                    renderTable();
+                });
+            });
+        }
+
+        function renderCustomSummary(custom) {
+            if (!custom || typeof custom !== "object") return "";
+            const entries = Object.entries(custom).slice(0, 3);
+            if (!entries.length) return "";
+            return entries.map(([k, v]) => {
+                const label = k.replace(/_total$/, "").replace(/_/g, " ");
+                const valText = typeof v === "boolean" ? (v ? "yes" : "no") : String(v);
+                return `<div class="stat-muted">${escapeHtml(label)}: <strong>${escapeHtml(valText)}</strong></div>`;
+            }).join("");
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById("workersBody");
+            const q = document.getElementById("searchInput").value.trim().toLowerCase();
+            const rows = allWorkers.filter(w => {
+                if (activeServiceFilter && w.service_type !== activeServiceFilter) return false;
+                return matchesStatusFilter(w) && matchesSearch(w, q);
+            });
+
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${
+                    allWorkers.length === 0
+                        ? "No worker services have registered yet. Click <strong>Worker SDK &amp; P2P Setup</strong> above to launch a worker."
+                        : "No registered workers match the current filter."
+                }</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = rows.map(w => {
+                const eff = w.effective_status || "offline";
+                const bCls = badgeClassFor(eff);
+                const st = w.stats || {};
+
+                // Endpoints
+                const eps = w.endpoints || [];
+                const epsHtml = eps.length
+                    ? eps.map(e => {
+                        const url = e.url || `${e.protocol || e.scheme || "http"}://${e.host}:${e.port}`;
+                        return `<span class="ep-chip" data-copy="${escapeHtml(url)}" title="Click to copy P2P endpoint">${escapeHtml(url)}</span>`;
+                    }).join("")
+                    : `<span class="stat-muted">No P2P listener</span>`;
+
+                const ops = ((w.capabilities && w.capabilities.operations) || []);
+                const opsLine = ops.length
+                    ? `<div class="worker-sub mono">ops: ${ops.map(escapeHtml).join(", ")}</div>`
+                    : "";
+
+                // Load bar
+                const loadPct = Math.min(100, Math.max(0, Math.round(Number(w.load_ratio || 0) * 100)));
+                const barCls = loadPct >= 90 ? "crit" : (loadPct >= 70 ? "warn" : "");
+
+                // Resources
+                const resParts = [];
+                if (st.cpu_percent !== null && st.cpu_percent !== undefined) resParts.push(`CPU ${st.cpu_percent}%`);
+                if (st.memory_mb !== null && st.memory_mb !== undefined) resParts.push(`RAM ${Math.round(st.memory_mb)} MB`);
+                if (st.gpu_memory_mb !== null && st.gpu_memory_mb !== undefined) resParts.push(`VRAM ${Math.round(st.gpu_memory_mb)} MB`);
+                const resText = resParts.length ? resParts.join(" · ") : "Telemetry pending";
+
+                return `
+                    <tr>
+                        <td>
+                            <div class="worker-name">${escapeHtml(w.worker_name)}</div>
+                            <div class="worker-sub mono">${escapeHtml(w.worker_id)}</div>
+                            <div class="worker-sub">🖥️ ${escapeHtml(w.host_name || "unknown")}${w.os_info ? " · " + escapeHtml(w.os_info) : ""}</div>
+                            <div class="worker-sub">⏱ Uptime: ${formatDuration(w.uptime_seconds)}</div>
+                        </td>
+                        <td>
+                            <div>
+                                <span class="svc-tag">${escapeHtml(w.service_type)}</span>
+                                <span class="svc-ver" style="margin-left:4px;">v${escapeHtml(w.service_version)}</span>
+                            </div>
+                            <div style="margin-top:6px;">${epsHtml}</div>
+                            ${opsLine}
+                        </td>
+                        <td>
+                            <span class="badge ${bCls}"><span class="dot"></span>${escapeHtml(eff)}</span>
+                            ${w.status_detail ? `<div class="worker-sub" style="margin-top:4px;">${escapeHtml(w.status_detail)}</div>` : ""}
+                            <div class="stat-line" style="margin-top:6px;">
+                                Slots: <strong>${w.active_tasks}</strong> / ${w.max_concurrency}
+                                ${w.queue_depth ? `<span class="stat-muted">(queue: ${w.queue_depth})</span>` : ""}
+                            </div>
+                            <div class="load-bar-track"><div class="load-bar-fill ${barCls}" style="width:${loadPct}%"></div></div>
+                            <div class="worker-sub" style="margin-top:5px;" title="${escapeHtml(w.last_heartbeat_at)}">
+                                ♥ ${formatAge(w.seconds_since_heartbeat)}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="stat-line">
+                                <strong>${formatNum(st.total_requests)}</strong> reqs
+                                <span class="stat-muted">(${formatNum(st.p2p_requests)} P2P)</span>
+                            </div>
+                            <div class="stat-line">
+                                Success: <strong>${w.success_rate_pct ?? 100}%</strong>
+                                <span class="stat-muted">(${formatNum(st.failed_requests)} err)</span>
+                            </div>
+                            <div class="stat-muted" style="margin-top:3px;">
+                                Avg <strong>${st.avg_latency_ms || 0} ms</strong> · P95 <strong>${st.p95_latency_ms || 0} ms</strong>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="stat-line">${escapeHtml(resText)}</div>
+                            ${renderCustomSummary(st.custom)}
+                        </td>
+                        <td>
+                            <div class="action-stack">
+                                <button type="button" class="btn btn-sm btn-inspect" data-inspect="${escapeHtml(w.worker_id)}">📊 Inspect</button>
+                                <button type="button" class="btn-danger-sm" data-delete="${escapeHtml(w.worker_id)}" data-name="${escapeHtml(w.worker_name)}">Remove</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+
+            tbody.querySelectorAll("[data-copy]").forEach(el => {
+                el.addEventListener("click", () => copyText(el.getAttribute("data-copy")));
+            });
+            tbody.querySelectorAll("[data-inspect]").forEach(btn => {
+                btn.addEventListener("click", () => openWorkerModal(btn.getAttribute("data-inspect")));
+            });
+            tbody.querySelectorAll("[data-delete]").forEach(btn => {
+                btn.addEventListener("click", () => deleteWorker(btn.getAttribute("data-delete"), btn.getAttribute("data-name")));
+            });
+        }
+
+        async function loadServices(force = false) {
+            try {
+                const headers = { "Accept": "application/json" };
+                if (!force && lastEtag) {
+                    headers["If-None-Match"] = lastEtag;
+                }
+                const res = await fetch("/api/services", { headers });
+                if (res.status === 401) {
+                    window.location.href = "/login";
+                    return;
+                }
+                if (res.status === 304) {
+                    document.getElementById("lastUpdatedText").textContent =
+                        `Unchanged (ETag 304) · checked ${new Date().toLocaleTimeString()}`;
+                    return;
+                }
+                const etag = res.headers.get("ETag");
+                if (etag) lastEtag = etag;
+
+                const data = await res.json();
+                allWorkers = data.workers || [];
+                serviceCatalog = data.service_catalog || [];
+                const s = data.summary || {};
+
+                document.getElementById("revisionLabel").textContent = `rev #${data.registry_revision || 0}`;
+                document.getElementById("kpiTotal").textContent = s.total_workers || 0;
+                document.getElementById("kpiServiceTypes").textContent =
+                    `${s.service_types_total || 0} service type${(s.service_types_total === 1) ? "" : "s"}`;
+                document.getElementById("kpiOnline").textContent = (s.serving_or_idle || 0) + (s.busy || 0);
+                document.getElementById("kpiDegraded").textContent = s.degraded_or_draining || 0;
+                document.getElementById("kpiUnhealthy").textContent = (s.unhealthy || 0) + (s.unresponsive || 0);
+                document.getElementById("kpiLoad").textContent = `${s.active_tasks || 0} / ${s.total_capacity || 0}`;
+                document.getElementById("kpiSuccessRate").textContent = `${s.success_rate_pct ?? 100}% success rate`;
+                document.getElementById("kpiRequests").textContent = formatNum(s.total_requests || 0);
+                document.getElementById("kpiP2PSub").textContent =
+                    `${formatNum(s.p2p_requests || 0)} P2P calls · ${s.avg_latency_ms || 0} ms avg`;
+
+                document.getElementById("lastUpdatedText").textContent =
+                    `Updated ${new Date().toLocaleTimeString()} · Auto-refresh 10s`;
+
+                renderCatalog();
+                renderTable();
+            } catch (err) {
+                console.error("Failed to load services:", err);
+            }
+        }
+
+        async function deleteWorker(workerId, name) {
+            if (!confirm(`Remove worker "${name}" (${workerId}) from Service Discovery?`)) return;
+            try {
+                const res = await fetch(`/api/services/${encodeURIComponent(workerId)}`, {
+                    method: "DELETE",
+                    headers: { "X-CSRF-Token": CSRF_TOKEN }
+                });
+                if (res.ok) {
+                    lastEtag = "";
+                    showToast(`Removed ${name}`);
+                    loadServices(true);
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    alert(data.error || "Failed to remove worker");
+                }
+            } catch (e) {
+                alert("Network error removing worker");
+            }
+        }
+
+        function renderSvgBarChart(buckets, fieldA, fieldB, colorA, colorB, emptyMsg) {
+            if (!buckets || buckets.length === 0) {
+                return `<div class="stat-muted" style="padding: 24px 0; text-align: center;">${escapeHtml(emptyMsg)}</div>`;
+            }
+            const pts = buckets.slice(-24);
+            const W = 400, H = 120, padL = 34, padR = 8, padT = 10, padB = 22;
+            const plotW = W - padL - padR;
+            const plotH = H - padT - padB;
+            const maxVal = Math.max(1, ...pts.map(b => Math.max(Number(b[fieldA] || 0), Number(b[fieldB] || 0))));
+            const step = plotW / pts.length;
+            const barW = Math.max(4, Math.min(14, step * 0.68));
+
+            const bars = pts.map((b, idx) => {
+                const vA = Number(b[fieldA] || 0);
+                const vB = fieldB ? Number(b[fieldB] || 0) : 0;
+                const hA = (vA / maxVal) * plotH;
+                const hB = (vB / maxVal) * plotH;
+                const x = padL + idx * step + (step - barW) / 2;
+                const yA = padT + (plotH - hA);
+                const yB = padT + (plotH - hB);
+                const tLabel = (b.bucket_iso || "").slice(11, 16);
+                return `
+                    <g>
+                        <title>${escapeHtml(tLabel)} UTC — Total: ${vA}${fieldB ? `, P2P: ${vB}` : ""}</title>
+                        <rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1.5, hA).toFixed(1)}" rx="2" fill="${colorA}"></rect>
+                        ${vB > 0 ? `<rect x="${x.toFixed(1)}" y="${yB.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1.5, hB).toFixed(1)}" rx="2" fill="${colorB}"></rect>` : ""}
+                    </g>
+                `;
+            }).join("");
+
+            const firstT = (pts[0].bucket_iso || "").slice(11, 16);
+            const lastT = (pts[pts.length - 1].bucket_iso || "").slice(11, 16);
+
+            return `
+                <svg viewBox="0 0 ${W} ${H}" width="100%" height="125" role="img">
+                    <line x1="${padL}" y1="${padT + plotH}" x2="${W - padR}" y2="${padT + plotH}" stroke="#e5e7eb" />
+                    <text x="2" y="${padT + 9}" font-size="9" fill="#6b7280">${Math.round(maxVal)}</text>
+                    <text x="2" y="${padT + plotH}" font-size="9" fill="#6b7280">0</text>
+                    ${bars}
+                    <text x="${padL}" y="${H - 5}" font-size="9" fill="#6b7280">${escapeHtml(firstT)}</text>
+                    <text x="${W - padR}" y="${H - 5}" font-size="9" fill="#6b7280" text-anchor="end">${escapeHtml(lastT)} UTC</text>
+                </svg>
+            `;
+        }
+
+        function renderSvgLineChart(buckets, fieldAvg, fieldP95) {
+            if (!buckets || buckets.length === 0) {
+                return `<div class="stat-muted" style="padding: 24px 0; text-align: center;">No 5-minute latency rollups recorded yet.</div>`;
+            }
+            const pts = buckets.slice(-24);
+            const W = 400, H = 120, padL = 38, padR = 8, padT = 10, padB = 22;
+            const plotW = W - padL - padR;
+            const plotH = H - padT - padB;
+            const maxVal = Math.max(1, ...pts.map(b => Math.max(Number(b[fieldAvg] || 0), Number(b[fieldP95] || 0))));
+
+            const coord = (idx, val) => {
+                const x = pts.length === 1 ? padL + plotW / 2 : padL + (idx / (pts.length - 1)) * plotW;
+                const y = padT + plotH - (Number(val || 0) / maxVal) * plotH;
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+            };
+
+            const polyP95 = pts.map((b, i) => coord(i, b[fieldP95])).join(" ");
+            const polyAvg = pts.map((b, i) => coord(i, b[fieldAvg])).join(" ");
+            const dots = pts.map((b, i) => {
+                const [cx, cy] = coord(i, b[fieldAvg]).split(",");
+                const tLabel = (b.bucket_iso || "").slice(11, 16);
+                return `<circle cx="${cx}" cy="${cy}" r="3" fill="#4f46e5"><title>${escapeHtml(tLabel)} UTC — Avg: ${b[fieldAvg]} ms, P95: ${b[fieldP95]} ms</title></circle>`;
+            }).join("");
+
+            const firstT = (pts[0].bucket_iso || "").slice(11, 16);
+            const lastT = (pts[pts.length - 1].bucket_iso || "").slice(11, 16);
+
+            return `
+                <svg viewBox="0 0 ${W} ${H}" width="100%" height="125" role="img">
+                    <line x1="${padL}" y1="${padT + plotH}" x2="${W - padR}" y2="${padT + plotH}" stroke="#e5e7eb" />
+                    <text x="2" y="${padT + 9}" font-size="9" fill="#6b7280">${Math.round(maxVal)}ms</text>
+                    <text x="2" y="${padT + plotH}" font-size="9" fill="#6b7280">0ms</text>
+                    ${pts.length > 1 ? `<polyline fill="none" stroke="#f59e0b" stroke-width="1.8" stroke-dasharray="4,2" points="${polyP95}" />` : ""}
+                    ${pts.length > 1 ? `<polyline fill="none" stroke="#4f46e5" stroke-width="2.2" points="${polyAvg}" />` : ""}
+                    ${dots}
+                    <text x="${padL}" y="${H - 5}" font-size="9" fill="#6b7280">${escapeHtml(firstT)}</text>
+                    <text x="${W - padR}" y="${H - 5}" font-size="9" fill="#6b7280" text-anchor="end">${escapeHtml(lastT)} UTC</text>
+                </svg>
+            `;
+        }
+
+        async function openWorkerModal(workerId) {
+            const modal = document.getElementById("detailModal");
+            const body = document.getElementById("modalBody");
+            document.getElementById("modalTitle").textContent = "Loading worker telemetry...";
+            document.getElementById("modalSubtitle").textContent = workerId;
+            body.innerHTML = `<div class="empty-state">Fetching live details &amp; historical rollups...</div>`;
+            modal.classList.add("open");
+
+            try {
+                const res = await fetch(`/api/services/${encodeURIComponent(workerId)}`, {
+                    headers: { "Accept": "application/json" }
+                });
+                if (!res.ok) {
+                    body.innerHTML = `<div class="empty-state">Worker not found or already deregistered.</div>`;
+                    return;
+                }
+                const data = await res.json();
+                const w = data.worker || {};
+                const st = w.stats || {};
+                const hist = data.history || data.metrics_history || [];
+
+                document.getElementById("modalTitle").textContent = `${w.worker_name} (${w.service_type} v${w.service_version})`;
+                document.getElementById("modalSubtitle").textContent =
+                    `ID: ${w.worker_id} · Host: ${w.host_name || "unknown"} · Effective Status: ${(w.effective_status || "").toUpperCase()}`;
+
+                const epsText = (w.endpoints || []).map(e => e.url || `${e.protocol || e.scheme || "http"}://${e.host}:${e.port}`).join(", ") || "None";
+
+                body.innerHTML = `
+                    <div class="detail-grid">
+                        <div class="detail-box">
+                            <div class="detail-label">Host &amp; OS</div>
+                            <div class="detail-val">${escapeHtml(w.host_name || "—")}</div>
+                            <div class="worker-sub">${escapeHtml(w.os_info || "")}</div>
+                            ${w.machine_id ? `<div class="worker-sub mono">Machine: ${escapeHtml(w.machine_id)}</div>` : ""}
+                        </div>
+                        <div class="detail-box">
+                            <div class="detail-label">Direct P2P Endpoints</div>
+                            <div class="detail-val mono" style="font-size:0.84rem;">${escapeHtml(epsText)}</div>
+                            <div class="worker-sub">Observed IP: ${escapeHtml(w.observed_ip || "—")}</div>
+                        </div>
+                        <div class="detail-box">
+                            <div class="detail-label">Status &amp; Heartbeat</div>
+                            <div class="detail-val">${escapeHtml((w.effective_status || "").toUpperCase())} (${w.active_tasks}/${w.max_concurrency} slots)</div>
+                            <div class="worker-sub">Last pulse: ${formatAge(w.seconds_since_heartbeat)} · Interval: ${w.heartbeat_interval}s</div>
+                        </div>
+                        <div class="detail-box">
+                            <div class="detail-label">Traffic &amp; Reliability</div>
+                            <div class="detail-val">${formatNum(st.total_requests)} total · ${formatNum(st.p2p_requests)} P2P</div>
+                            <div class="worker-sub">${w.success_rate_pct ?? 100}% success · ${formatNum(st.failed_requests)} errors</div>
+                        </div>
+                        <div class="detail-box">
+                            <div class="detail-label">Latency Distribution</div>
+                            <div class="detail-val">Avg ${st.avg_latency_ms || 0} ms · P95 ${st.p95_latency_ms || 0} ms</div>
+                            <div class="worker-sub">Last request: ${st.last_latency_ms || 0} ms</div>
+                        </div>
+                        <div class="detail-box">
+                            <div class="detail-label">Process Resources &amp; Uptime</div>
+                            <div class="detail-val">Uptime ${formatDuration(w.uptime_seconds)}</div>
+                            <div class="worker-sub">
+                                CPU: ${st.cpu_percent ?? "—"}% · RAM: ${st.memory_mb ? Math.round(st.memory_mb) + " MB" : "—"} · VRAM: ${st.gpu_memory_mb ? Math.round(st.gpu_memory_mb) + " MB" : "—"}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <div class="chart-title">
+                                <span>5m Throughput (Total vs Direct P2P)</span>
+                                <span class="stat-muted">■ Indigo: Total · ■ Emerald: P2P</span>
+                            </div>
+                            ${renderSvgBarChart(hist, "requests_delta", "p2p_delta", "#6366f1", "#10b981", "Waiting for traffic buckets...")}
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-title">
+                                <span>5m Latency Trend (ms)</span>
+                                <span class="stat-muted">— Avg · -- P95</span>
+                            </div>
+                            ${renderSvgLineChart(hist, "avg_latency_ms", "p95_latency_ms")}
+                        </div>
+                    </div>
+
+                    <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin-bottom: 0;">
+                        <div>
+                            <div class="detail-label" style="margin-bottom:6px;">Capabilities &amp; P2P Operations</div>
+                            <pre class="json-box">${escapeHtml(JSON.stringify(w.capabilities || {}, null, 2))}</pre>
+                        </div>
+                        <div>
+                            <div class="detail-label" style="margin-bottom:6px;">Service-Specific Statistical Data</div>
+                            <pre class="json-box">${escapeHtml(JSON.stringify(st.custom || {}, null, 2))}</pre>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                body.innerHTML = `<div class="empty-state">Failed to load worker details.</div>`;
+            }
+        }
+
+        function closeModal() {
+            document.getElementById("detailModal").classList.remove("open");
+        }
+
+        document.getElementById("closeModalBtn").addEventListener("click", closeModal);
+        document.getElementById("detailModal").addEventListener("click", e => {
+            if (e.target.id === "detailModal") closeModal();
+        });
+
+        document.getElementById("refreshBtn").addEventListener("click", () => {
+            lastEtag = "";
+            loadServices(true);
+        });
+        document.getElementById("toggleSetupBtn").addEventListener("click", () => {
+            document.getElementById("setupPanel").classList.toggle("open");
+        });
+        document.getElementById("clearServiceBtn").addEventListener("click", () => {
+            activeServiceFilter = "";
+            renderCatalog();
+            renderTable();
+        });
+        document.getElementById("searchInput").addEventListener("input", renderTable);
+
+        document.getElementById("filterPills").addEventListener("click", e => {
+            const btn = e.target.closest(".filter-pill");
+            if (!btn) return;
+            document.querySelectorAll(".filter-pill").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeStatusFilter = btn.getAttribute("data-filter");
+            renderTable();
+        });
+
+        loadServices(true);
+        setInterval(() => loadServices(false), 10000);
+    </script>
+</body>
+</html>

@@ -29,6 +29,12 @@ import requests
 import db as job_db
 from epub_reader.blueprint import create_epub_blueprint
 from machine_discovery.blueprint import create_machine_discovery_blueprint
+from service_discovery import (
+    ServiceAdmissionError,
+    create_service_discovery_blueprint,
+    require_registered_worker,
+    verify_request_worker,
+)
 from ssl_utils import ensure_self_signed_cert
 
 app = Flask(__name__)
@@ -684,12 +690,7 @@ def tts_audio_static(filename):
 # Text-to-Voice: VibeVoice REST APIs
 # ============================================================
 
-@app.route("/api/tts/jobs", methods=["GET"])
-def tts_list_jobs():
-    """List all text-to-voice jobs."""
-    status_filter = request.args.get("status")
-    job_list = job_db.list_jobs(status_filter)
-
+def _serialize_tts_job_summaries(job_list):
     result = []
     for job in job_list:
         result.append({
@@ -700,13 +701,53 @@ def tts_list_jobs():
             "created_at": job["created_at"],
             "updated_at": job["updated_at"],
         })
+    return result
 
-    return jsonify({"jobs": result})
+
+@app.route("/api/tts/worker/jobs", methods=["GET"])
+@require_registered_worker("tts")
+def tts_worker_list_jobs():
+    """Worker-gated endpoint to poll pending text-to-voice jobs."""
+    status_filter = request.args.get("status", "pending")
+    job_list = job_db.list_jobs(status_filter)
+    return jsonify({"jobs": _serialize_tts_job_summaries(job_list)})
+
+
+@app.route("/api/tts/jobs", methods=["GET"])
+def tts_list_jobs():
+    """List all text-to-voice jobs (validates worker lease when X-Worker-Id is present)."""
+    if (
+        request.headers.get("X-Worker-Id")
+        or request.headers.get("X-Worker-Lease")
+        or request.args.get("worker") in ("1", "true")
+    ):
+        try:
+            verify_request_worker("tts")
+        except ServiceAdmissionError as err:
+            return jsonify({
+                "error": err.message,
+                "code": err.code,
+                "register_endpoint": "/api/services/register",
+            }), err.status_code
+
+    status_filter = request.args.get("status")
+    job_list = job_db.list_jobs(status_filter)
+    return jsonify({"jobs": _serialize_tts_job_summaries(job_list)})
 
 
 @app.route("/api/tts/job/<job_id>", methods=["GET"])
 def tts_get_job(job_id):
     """Get a specific text-to-voice job."""
+    if request.headers.get("X-Worker-Id") or request.headers.get("X-Worker-Lease"):
+        try:
+            verify_request_worker("tts")
+        except ServiceAdmissionError as err:
+            return jsonify({
+                "error": err.message,
+                "code": err.code,
+                "register_endpoint": "/api/services/register",
+            }), err.status_code
+
     job = job_db.get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
@@ -715,8 +756,9 @@ def tts_get_job(job_id):
 
 
 @app.route("/api/tts/job/<job_id>/result", methods=["POST"])
+@require_registered_worker("tts")
 def tts_upload_result(job_id):
-    """Upload audio result for a job."""
+    """Upload audio result for a job (requires registered TTS worker)."""
     job = job_db.get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
@@ -747,8 +789,9 @@ def tts_upload_result(job_id):
 
 
 @app.route("/api/tts/job/<job_id>/status", methods=["POST"])
+@require_registered_worker("tts")
 def tts_update_status(job_id):
-    """Update job status (processing, failed, etc.)."""
+    """Update job status (processing, failed, etc. — requires registered TTS worker)."""
     job = job_db.get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
@@ -883,6 +926,13 @@ app.register_blueprint(
 
 app.register_blueprint(
     create_machine_discovery_blueprint(
+        project_root=os.path.dirname(os.path.abspath(__file__)),
+        validate_csrf=validate_csrf,
+    )
+)
+
+app.register_blueprint(
+    create_service_discovery_blueprint(
         project_root=os.path.dirname(os.path.abspath(__file__)),
         validate_csrf=validate_csrf,
     )

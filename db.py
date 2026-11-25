@@ -126,6 +126,58 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_machines_name ON machines(machine_name)
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS worker_services (
+            worker_id TEXT PRIMARY KEY,
+            worker_name TEXT NOT NULL,
+            service_type TEXT NOT NULL,
+            service_version TEXT NOT NULL DEFAULT '1.0.0',
+            machine_id TEXT,
+            host_name TEXT NOT NULL DEFAULT '',
+            os_info TEXT NOT NULL DEFAULT '',
+            endpoints_json TEXT NOT NULL DEFAULT '[]',
+            observed_ip TEXT,
+            capabilities_json TEXT NOT NULL DEFAULT '{}',
+            worker_status TEXT NOT NULL DEFAULT 'serving',
+            status_detail TEXT NOT NULL DEFAULT '',
+            max_concurrency INTEGER NOT NULL DEFAULT 1,
+            active_tasks INTEGER NOT NULL DEFAULT 0,
+            queue_depth INTEGER NOT NULL DEFAULT 0,
+            heartbeat_interval INTEGER NOT NULL DEFAULT 30,
+            stats_json TEXT NOT NULL DEFAULT '{}',
+            started_at REAL NOT NULL,
+            first_registered_at REAL NOT NULL,
+            last_heartbeat_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_worker_services_type ON worker_services(service_type)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_worker_services_machine ON worker_services(machine_id)
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS worker_metrics_history (
+            worker_id TEXT NOT NULL,
+            bucket_epoch INTEGER NOT NULL,
+            requests_delta INTEGER NOT NULL DEFAULT 0,
+            errors_delta INTEGER NOT NULL DEFAULT 0,
+            p2p_delta INTEGER NOT NULL DEFAULT 0,
+            avg_latency_ms REAL NOT NULL DEFAULT 0,
+            p95_latency_ms REAL NOT NULL DEFAULT 0,
+            active_tasks_max INTEGER NOT NULL DEFAULT 0,
+            cpu_percent REAL,
+            memory_mb REAL,
+            gpu_memory_mb REAL,
+            PRIMARY KEY (worker_id, bucket_epoch)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_worker_metrics_bucket ON worker_metrics_history(bucket_epoch)
+    """)
+
     now = datetime.datetime.now().isoformat()
 
     # Seed default allowed email once on initial setup
@@ -163,6 +215,16 @@ def init_db():
             (secrets.token_hex(32), now),
         )
 
+    # Seed persistent HMAC signing secret for worker leases & offline P2P peer tokens
+    peer_secret_row = conn.execute(
+        "SELECT value FROM settings WHERE key = 'peer_signing_secret'"
+    ).fetchone()
+    if not peer_secret_row:
+        conn.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES ('peer_signing_secret', ?, ?)",
+            (secrets.token_hex(32), now),
+        )
+
     conn.commit()
 
 
@@ -196,6 +258,15 @@ def get_api_key() -> str:
 def set_api_key(new_key: str):
     """Update the shared REST API key."""
     set_setting("api_key", new_key.strip())
+
+
+def get_peer_signing_secret() -> str:
+    """Return the persistent HMAC secret used to sign worker leases and P2P peer tokens."""
+    secret = get_setting("peer_signing_secret")
+    if not secret:
+        secret = secrets.token_hex(32)
+        set_setting("peer_signing_secret", secret)
+    return secret
 
 
 # ============================================================

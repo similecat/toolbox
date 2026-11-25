@@ -10,6 +10,7 @@ A collection of useful web tools built with Python Flask, secured with **HTTPS t
 - **GitHub Repo Downloader**: Download any public or private GitHub repository as a ZIP archive (Web UI & REST API).
 - **Text to Voice**: Submit English or Chinese text for asynchronous VibeVoice speech synthesis and download completed audio files.
 - **Machine Discovery (`/machines` & `/api/machines/*`)**: Cross-platform Linux & Windows machine status inventory reporting IPv4, IPv6, and serving status over persistent HTTPS Keep-Alive heartbeats (`60s` pulse, `>90s` unhealthy, `>180s` unresponsive).
+- **Worker & Service Discovery + Direct P2P Mesh (`/services` & `/api/services/*`)**: Mandatory registration & lease enforcement (`X-Worker-Id` + `X-Worker-Lease`) for all existing and future worker services, live health & statistical telemetry dashboard (with 5-minute rollup charts), and direct Worker-to-Worker Peer-to-Peer (P2P) RPC invocation via `clients/worker_sdk.py` without routing payloads through the central server.
 
 ---
 
@@ -181,18 +182,18 @@ Each version directory (`backups/epub_vault/<YYYYMMDD_HHMMSS>/`) stores an extra
 
 ## Running the TTS Worker
 
-The TTS worker polls `/api/tts/jobs?status=pending` over HTTPS using the shared API key, synthesizes audio with VibeVoice, and uploads the resulting audio file.
+The TTS worker registers with Service Discovery (`service_type="tts"`), sends live heartbeats + synthesis telemetry, exposes direct Peer-to-Peer (`synthesize`, `list_voices`) RPC operations for peer workers, and polls `/api/tts/worker/jobs?status=pending` over HTTPS to process queued jobs.
 
 ```bash
 cd VibeVoice
 pip install -e .
 cd demo
 
-# Connect to local HTTPS server
-python tts_worker.py --base_url https://localhost:5000
+# Connect to local HTTPS server (auto-selects P2P port or specify --p2p_port)
+python tts_worker.py --base_url https://localhost:5000 --p2p_port 9410
 
 # Connect to remote HTTPS deployment
-python tts_worker.py --base_url https://byang.japaneast.cloudapp.azure.com --api_key tbx-default-api-key-2026
+python tts_worker.py --base_url https://byang.japaneast.cloudapp.azure.com --api_key tbx-default-api-key-2026 --p2p_port 9410
 ```
 
 ### Worker Command-Line Options
@@ -202,6 +203,12 @@ python tts_worker.py --base_url https://byang.japaneast.cloudapp.azure.com --api
 | `--base_url` | `https://localhost:5000` | Base HTTPS URL of the Toolbox server |
 | `--api_key` | `TOOLBOX_API_KEY` or `tbx-default-api-key-2026` | Shared REST API key |
 | `--verify_ssl` | `False` | Enable strict CA verification (off by default for self-signed certs) |
+| `--worker_id` | Auto-generated | Stable worker instance ID in Service Discovery |
+| `--worker_name` | Auto-generated | Friendly worker display name in `/services` |
+| `--heartbeat_interval` | `30` | Service Discovery heartbeat interval in seconds |
+| `--p2p_host` | `0.0.0.0` | Bind address for direct Peer-to-Peer worker RPC server |
+| `--p2p_port` | `0` (ephemeral) | Listen port for direct P2P worker RPC server |
+| `--p2p_advertise_host` | Auto-detected | Explicit routable IP/hostname advertised to peer workers |
 | `--model_path` | Auto-detect | Path to VibeVoice model |
 | `--device` | Auto-detect | Device for inference: `cuda`, `mps`, `cpu` |
 | `--interval` | `5` | Polling interval in seconds |
@@ -296,6 +303,16 @@ python3 clients/machine_agent.py --server https://byang.japaneast.cloudapp.azure
 # Install as background service (systemd on Linux, Scheduled Task on Windows)
 sudo python3 clients/machine_agent.py --server https://byang.japaneast.cloudapp.azure.com --api-key <API_KEY> --install-service
 ```
+
+### Worker Service Discovery & Direct P2P Mesh APIs (`/services` & `clients/worker_sdk.py`)
+- **Mandatory Worker Policy**: All worker-only endpoints (`GET /api/tts/worker/jobs`, `POST /api/tts/job/<id>/status`, `POST /api/tts/job/<id>/result`, and any future `@require_registered_worker("<service_type>")` routes) require an active worker registration lease (`X-Worker-Id` + `X-Worker-Lease`), returning `428 Precondition Required` if unregistered or expired (`>1.5×` `heartbeat_interval`).
+- **GET** `/api/services` — List fleet summary KPIs, grouped `service_catalog`, and all registered workers (supports `ETag` / `If-None-Match` `304 Not Modified`, `?service_type=`, `?status=`, `?health=`, `?capability=`, and `?q=`). Accessible to logged-in web users and API-key clients.
+- **GET** `/api/services/discover/<service_type>` — Pull routable online peer workers and their ranked P2P endpoints (supports `ETag` caching and `?capability=key:val`).
+- **GET** `/api/services/<worker_id>` — Fetch full worker basic info, live status, custom statistics, and 5-minute historical metric rollups (`?hours=24`).
+- **POST** `/api/services/register` — Register worker service metadata, capabilities, and P2P endpoints; returns `worker_lease_token`, `peer_auth_token`, and `peer_verify_secret`.
+- **POST** `/api/services/heartbeat` — Send `30s` live status & statistical telemetry pulse (`204 No Content` with refreshed `X-Peer-Token`, or `205 Reset Content` to trigger automatic re-registration).
+- **POST** `/api/services/deregister` & **DELETE** `/api/services/<worker_id>` — Gracefully mark a worker offline or delete a retired worker record.
+- **GET** `/api/services/worker_sdk.py` (or `/services/worker_sdk.py`) — Download the standalone zero-dependency Python 3.8+ SDK (`clients/worker_sdk.py`) for building workers that call peer workers directly (`runtime.call_peer("tts", "synthesize", ...)` / `runtime.call_peer_raw(...)`) with offline HMAC `X-Peer-Token` verification and automatic replica failover.
 
 ---
 

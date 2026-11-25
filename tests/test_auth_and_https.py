@@ -238,11 +238,39 @@ class ToolboxAuthAndApiTest(unittest.TestCase):
         self.assertEqual(jobs_resp.status_code, 200)
         self.assertEqual(len(jobs_resp.get_json()["jobs"]), 1)
 
-        # Update status + upload audio + download via API key
-        st_resp = self.client.post(
+        # Unregistered worker calls are rejected with 428 Precondition Required
+        unreg_resp = self.client.post(
             f"/api/tts/job/{job_id}/status",
             json={"status": "processing"},
             headers={"X-API-Key": api_key},
+            base_url=self.https_base,
+        )
+        self.assertEqual(unreg_resp.status_code, 428)
+
+        # Register TTS worker via Service Discovery, then update status + upload audio + download
+        reg_resp = self.client.post(
+            "/api/services/register",
+            json={
+                "worker_id": "tts-test-worker-01",
+                "worker_name": "tts-test-worker",
+                "service_type": "tts",
+                "service_version": "1.2.0",
+            },
+            headers={"X-API-Key": api_key},
+            base_url=self.https_base,
+        )
+        self.assertEqual(reg_resp.status_code, 200)
+        worker_lease = reg_resp.get_json()["worker_lease_token"]
+        worker_headers = {
+            "X-API-Key": api_key,
+            "X-Worker-Id": "tts-test-worker-01",
+            "X-Worker-Lease": worker_lease,
+        }
+
+        st_resp = self.client.post(
+            f"/api/tts/job/{job_id}/status",
+            json={"status": "processing"},
+            headers=worker_headers,
             base_url=self.https_base,
         )
         self.assertEqual(st_resp.status_code, 200)
@@ -252,7 +280,7 @@ class ToolboxAuthAndApiTest(unittest.TestCase):
             f"/api/tts/job/{job_id}/result",
             data={"audio": (io.BytesIO(b"FAKE_WAV_DATA"), "test.wav")},
             content_type="multipart/form-data",
-            headers={"X-API-Key": api_key},
+            headers=worker_headers,
             base_url=self.https_base,
         )
         self.assertEqual(up_resp.status_code, 200)

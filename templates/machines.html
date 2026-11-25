@@ -432,7 +432,10 @@
 <body>
     <div class="container">
         <div class="nav-row">
-            <a href="/" class="back-link">← Back to Toolbox</a>
+            <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+                <a href="/" class="back-link">← Back to Toolbox</a>
+                <a href="/services" style="color:white; text-decoration:none; padding:5px 11px; border-radius:999px; font-size:0.85rem; background:rgba(255,255,255,0.18);">🧩 Service Discovery</a>
+            </div>
             {% if current_user %}
             <div class="user-links">
                 <span>👤 {{ current_user.email }}</span>
